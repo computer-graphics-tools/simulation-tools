@@ -215,6 +215,7 @@ kernel void reuseTrianglesCache(
         uint triangleNeighbor = triangleNeighbors[i];
         if (triangleNeighbor == UINT_MAX) { continue; }
         Indices8 neighborCollisionPairs = collisionPairs[triangleNeighbor];
+        // To reduce computation cost, only test 2 closest vertices
         for (int j = 0; j < 2; j++) {
             uint vertexCollisionIndex = neighborCollisionPairs.values[j];
             if (vertexCollisionIndex == UINT_MAX) { continue; }

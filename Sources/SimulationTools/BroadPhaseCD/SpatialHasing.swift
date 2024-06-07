@@ -140,7 +140,8 @@ public final class SpatialHashing {
     ///   - triangleNeighborhood: The buffer containing triangle neighborhood information.
     ///   - triangles: The buffer containing triangle indices.
     ///   - positionsCount: The number of positions.
-    ///   - trianglesCount: The number of triangles.    public func update(
+    ///   - trianglesCount: The number of triangles.
+    public func update(
         commandBuffer: MTLCommandBuffer,
         positions: MTLBuffer,
         collisionPairs: MTLBuffer,
