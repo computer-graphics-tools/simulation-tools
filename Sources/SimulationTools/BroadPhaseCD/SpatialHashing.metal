@@ -106,7 +106,7 @@ kernel void cacheCollisions(
         }
     }
     
-    for (int i = 0; i <INDICES_8_COUNT; i++) {
+    for (int i = 0; i < INDICES_8_COUNT; i++) {
         collisionPairs[id].values[i] = collisionCandidates.candidates[i].index;
     }
 }
@@ -129,16 +129,16 @@ kernel void cacheTriangleCollisions(
     Triangle triangle = createTriangle(triangleVertices, positions);
 
     float3 minPos = float3(
-                           min(min(triangle.a.x, triangle.b.x), triangle.c.x),
-                           min(min(triangle.a.y, triangle.b.y), triangle.c.y),
-                           min(min(triangle.a.z, triangle.b.z), triangle.c.z)
-                           );
+        min(min(triangle.a.x, triangle.b.x), triangle.c.x),
+        min(min(triangle.a.y, triangle.b.y), triangle.c.y),
+        min(min(triangle.a.z, triangle.b.z), triangle.c.z)
+    );
                       
     float3 maxPos = float3(
-                           max(max(triangle.a.x, triangle.b.x), triangle.c.x),
-                           max(max(triangle.a.y, triangle.b.y), triangle.c.y),
-                           max(max(triangle.a.z, triangle.b.z), triangle.c.z)
-                           );
+        max(max(triangle.a.x, triangle.b.x), triangle.c.x),
+        max(max(triangle.a.y, triangle.b.y), triangle.c.y),
+        max(max(triangle.a.z, triangle.b.z), triangle.c.z)
+    );
     
     int3 minHashPos = hashCoord(minPos, gridSpacing);
     int3 maxHashPos = hashCoord(maxPos, gridSpacing);
@@ -146,7 +146,6 @@ kernel void cacheTriangleCollisions(
     
     CollisionCandidates collisionCandidates;
     initializeCollisionCandidates(collisionPairs, positions, triangleIndex, collisionCandidates, triangle);
-
 
     for (int x = minHashPos.x; x <= maxHashPos.x; ++x) {
         for (int y = minHashPos.y; y <= maxHashPos.y; ++y) {
@@ -182,12 +181,12 @@ kernel void cacheTriangleCollisions(
         }
     }
     
-    for (int i = 0; i <INDICES_8_COUNT; i++) {
+    for (int i = 0; i < INDICES_8_COUNT; i++) {
         collisionPairs[triangleIndex].values[i] = collisionCandidates.candidates[i].index;
     }
 }
 
-kernel void reuseTrinaglesCache(
+kernel void reuseTrianglesCache(
     device Indices8* collisionPairs [[ buffer(0) ]],
     constant uint2* hashTable [[ buffer(1) ]],
     constant uint* cellStart [[ buffer(2) ]],
@@ -237,7 +236,7 @@ kernel void reuseTrinaglesCache(
         }
     }
 
-    for (int i = 0; i <INDICES_8_COUNT; i++) {
+    for (int i = 0; i < INDICES_8_COUNT; i++) {
         collisionPairs[triangleIndex].values[i] = collisionCandidates.candidates[i].index;
     }
 }

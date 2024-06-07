@@ -1,17 +1,17 @@
 import MetalTools
 
-final public class SpatialHashing {
+public final class SpatialHashing {
     private let computeParticleHashState: MTLComputePipelineState
     private let findCellStartState: MTLComputePipelineState
     private let cacheCollisionsState: MTLComputePipelineState
-    private let reuseTrinaglesCacheState: MTLComputePipelineState
+    private let reuseTrianglesCacheState: MTLComputePipelineState
     private let storeHalfPositionsState: MTLComputePipelineState
     private let bitonicSort: BitonicSort
 
     private let halfPositions: MTLBuffer
     private let cellStart: MTLBuffer
     private let cellEnd: MTLBuffer
-    let hashTable: (buffer: MTLBuffer, paddedCount: Int)
+    public let hashTable: (buffer: MTLBuffer, paddedCount: Int)
     
     private let hashTableCapacity: Int
     private let gridCellSpacing: Float
@@ -37,7 +37,7 @@ final public class SpatialHashing {
         cacheCollisionsState = try library.computePipelineState(
             function: collisionType == .vertexVertex ? "cacheCollisions" : "cacheTriangleCollisions"
         )
-        reuseTrinaglesCacheState = try library.computePipelineState(function: "reuseTrinaglesCache")
+        reuseTrianglesCacheState = try library.computePipelineState(function: "reuseTrianglesCache")
         storeHalfPositionsState = try library.computePipelineState(function: "storeHalfPositions")
                 
         bitonicSort = try .init(library: library)
@@ -64,52 +64,52 @@ final public class SpatialHashing {
         positions: MTLBuffer,
         outputPositions: MTLBuffer,
         collisionPairs: MTLBuffer,
-        vertexNeigbrhood: MTLBuffer,
-        triangleNeigbrhood: MTLBuffer,
+        vertexNeighborhood: MTLBuffer,
+        triangleNeighborhood: MTLBuffer,
         triangles: MTLBuffer,
         positionsCount: Int,
         trianglesCount: Int
     ) {
-            commandBuffer.compute { encoder in
-                encoder.setBuffer(positions, offset: 0, index: 0)
-                encoder.setBuffer(halfPositions, offset: 0, index: 1)
-                encoder.dispatch1d(state: storeHalfPositionsState, exactly: positionsCount)
-                
-                encoder.setBuffer(halfPositions, offset: 0, index: 0)
-                encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
-                encoder.setValue(UInt32(hashTableCapacity), at: 2)
-                encoder.setValue(gridCellSpacing, at: 3)
-                encoder.dispatch1d(state: computeParticleHashState, exactly: positionsCount)
+        commandBuffer.compute { encoder in
+            encoder.setBuffer(positions, offset: 0, index: 0)
+            encoder.setBuffer(halfPositions, offset: 0, index: 1)
+            encoder.dispatch1d(state: storeHalfPositionsState, exactly: positionsCount)
+            
+            encoder.setBuffer(halfPositions, offset: 0, index: 0)
+            encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
+            encoder.setValue(UInt32(hashTableCapacity), at: 2)
+            encoder.setValue(gridCellSpacing, at: 3)
+            encoder.dispatch1d(state: computeParticleHashState, exactly: positionsCount)
+        }
+
+        bitonicSort.encode(data: hashTable.buffer, count: hashTable.paddedCount, in: commandBuffer)
+
+        commandBuffer.compute { encoder in
+            encoder.setBuffer(cellStart, offset: 0, index: 0)
+            encoder.setBuffer(cellEnd, offset: 0, index: 1)
+            encoder.setBuffer(hashTable.buffer, offset: 0, index: 2)
+            encoder.setValue(UInt32(positionsCount), at: 3)
+            let threadgroupWidth = 256
+            encoder.setThreadgroupMemoryLength((threadgroupWidth + 16) * MemoryLayout<UInt32>.size, index: 0)
+            encoder.dispatch1d(state: findCellStartState, exactly: positionsCount, threadgroupWidth: threadgroupWidth)
+
+            encoder.setBuffer(collisionPairs, offset: 0, index: 0)
+            encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
+            encoder.setBuffer(cellStart, offset: 0, index: 2)
+            encoder.setBuffer(cellEnd, offset: 0, index: 3)
+            encoder.setBuffer(halfPositions, offset: 0, index: 4)
+            encoder.setBuffer(vertexNeighborhood, offset: 0, index: 5)
+            encoder.setValue(UInt32(hashTableCapacity), at: 6)
+            encoder.setValue(spacingScale, at: 7)
+            encoder.setValue(gridCellSpacing, at: 8)
+
+            if collisionType == .vertexVertex {
+                encoder.dispatch1d(state: cacheCollisionsState, exactly: positionsCount)
+            } else {
+                encoder.setBuffer(triangles, offset: 0, index: 9)
+                encoder.dispatch1d(state: cacheCollisionsState, exactly: trianglesCount)
             }
-
-            bitonicSort.encode(data: hashTable.buffer, count: hashTable.paddedCount, in: commandBuffer)
-
-            commandBuffer.compute { encoder in
-                encoder.setBuffer(cellStart, offset: 0, index: 0)
-                encoder.setBuffer(cellEnd, offset: 0, index: 1)
-                encoder.setBuffer(hashTable.buffer, offset: 0, index: 2)
-                encoder.setValue(UInt32(positionsCount), at: 3)
-                let threadgroupWidth = 256
-                encoder.setThreadgroupMemoryLength((threadgroupWidth + 16) * MemoryLayout<UInt32>.size, index: 0)
-                encoder.dispatch1d(state: findCellStartState, exactly: positionsCount, threadgroupWidth: threadgroupWidth)
-
-                encoder.setBuffer(collisionPairs, offset: 0, index: 0)
-                encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
-                encoder.setBuffer(cellStart, offset: 0, index: 2)
-                encoder.setBuffer(cellEnd, offset: 0, index: 3)
-                encoder.setBuffer(halfPositions, offset: 0, index: 4)
-                encoder.setBuffer(vertexNeigbrhood, offset: 0, index: 5)
-                encoder.setValue(UInt32(hashTableCapacity), at: 6)
-                encoder.setValue(spacingScale, at: 7)
-                encoder.setValue(gridCellSpacing, at: 8)
-
-                if collisionType == .vertexVertex {
-                    encoder.dispatch1d(state: cacheCollisionsState, exactly: positionsCount)
-                } else {
-                    encoder.setBuffer(triangles, offset: 0, index: 9)
-                    encoder.dispatch1d(state: cacheCollisionsState, exactly: trianglesCount)
-                }
-            }
+        }
         
         if collisionType == .vertexTriangle {
             commandBuffer.compute { encoder in
@@ -118,21 +118,21 @@ final public class SpatialHashing {
                 encoder.setBuffer(cellStart, offset: 0, index: 2)
                 encoder.setBuffer(cellEnd, offset: 0, index: 3)
                 encoder.setBuffer(positions, offset: 0, index: 4)
-                encoder.setBuffer(vertexNeigbrhood, offset: 0, index: 5)
+                encoder.setBuffer(vertexNeighborhood, offset: 0, index: 5)
                 encoder.setBuffer(triangles, offset: 0, index: 6)
-                encoder.setBuffer(triangleNeigbrhood, offset: 0, index: 7)
+                encoder.setBuffer(triangleNeighborhood, offset: 0, index: 7)
                 encoder.setValue(UInt32(hashTableCapacity), at: 8)
                 encoder.setValue(spacingScale, at: 9)
                 encoder.setValue(gridCellSpacing, at: 10)
 
-                encoder.dispatch1d(state: reuseTrinaglesCacheState, exactly: trianglesCount)
+                encoder.dispatch1d(state: reuseTrianglesCacheState, exactly: trianglesCount)
             }
         }
     }
 }
 
 public extension SpatialHashing {
-     static func totalBuffersSize(positionsCount: Int) -> Int {
+    static func totalBuffersSize(positionsCount: Int) -> Int {
         let halfPositionsSize = positionsCount * MemoryLayout<SIMD4<Float16>>.stride
         let cellStartSize = positionsCount * MemoryLayout<UInt32>.stride
         let cellEndSize = positionsCount * MemoryLayout<UInt32>.stride
