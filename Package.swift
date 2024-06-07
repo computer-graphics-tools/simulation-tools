@@ -30,7 +30,7 @@ let package = Package(
                 .product(name: "MetalComputeTools", package: "metal-tools")
             ],
             resources: [
-                .process("SimulationTools/BitonicSort/BitonicSort.metal"),
+                .process("SimulationTools/BroadPhaseCD/BitonicSort/BitonicSort.metal"),
                 .process("SimulationTools/BroadPhaseCD/SpatialHashing.metal"),
             ]
         ),
