@@ -17,7 +17,17 @@ public final class SpatialHashing {
     private let gridCellSpacing: Float
     private let collisionType: SelfCollisionType
     private let spacingScale: Float
-
+    
+    /// Initializes a new `SpatialHashing` instance.
+    ///
+    /// - Parameters:
+    ///   - device: The Metal device.
+    ///   - collisionType: The type of collision detection to use.
+    ///   - positions: An array of particle positions.
+    ///   - triangles: An array of triangle indices.
+    ///   - spacingScale: The scale factor for grid cell spacing.
+    ///   - heap: The Metal heap for resource allocation.
+    /// - Throws: An error if the Metal library or pipeline states cannot be created.
     public init(
         device: MTLDevice,
         collisionType: SelfCollisionType,
@@ -59,10 +69,19 @@ public final class SpatialHashing {
         gridCellSpacing = (gridCellSpacingSum / Float(trianglesCount))
     }
     
-    public func encode(
+    /// Builds the spatial hash and collision pairs for the given positions and triangles.
+    /// - Parameters:
+    ///   - commandBuffer: The Metal command buffer to encode the commands into.
+    ///   - positions: The buffer containing particle positions.
+    ///   - collisionPairs: The buffer to store collision pairs.
+    ///   - vertexNeighborhood: The buffer containing vertex neighborhood information.
+    ///   - triangleNeighborhood: The buffer containing triangle neighborhood information.
+    ///   - triangles: The buffer containing triangle indices.
+    ///   - positionsCount: The number of positions.
+    ///   - trianglesCount: The number of triangles.
+    public func build(
         commandBuffer: MTLCommandBuffer,
         positions: MTLBuffer,
-        outputPositions: MTLBuffer,
         collisionPairs: MTLBuffer,
         vertexNeighborhood: MTLBuffer,
         triangleNeighborhood: MTLBuffer,
@@ -110,7 +129,27 @@ public final class SpatialHashing {
                 encoder.dispatch1d(state: cacheCollisionsState, exactly: trianglesCount)
             }
         }
-        
+    }
+
+    /// Updates the collision pairs for vertex-triangle collisions by performing spatial-temporal reuse.
+    /// - Parameters:
+    ///   - commandBuffer: The Metal command buffer to encode the commands into.
+    ///   - positions: The buffer containing particle positions.
+    ///   - collisionPairs: The buffer to store collision pairs.
+    ///   - vertexNeighborhood: The buffer containing vertex neighborhood information.
+    ///   - triangleNeighborhood: The buffer containing triangle neighborhood information.
+    ///   - triangles: The buffer containing triangle indices.
+    ///   - positionsCount: The number of positions.
+    ///   - trianglesCount: The number of triangles.    public func update(
+        commandBuffer: MTLCommandBuffer,
+        positions: MTLBuffer,
+        collisionPairs: MTLBuffer,
+        vertexNeighborhood: MTLBuffer,
+        triangleNeighborhood: MTLBuffer,
+        triangles: MTLBuffer,
+        positionsCount: Int,
+        trianglesCount: Int
+    ) {
         if collisionType == .vertexTriangle {
             commandBuffer.compute { encoder in
                 encoder.setBuffer(collisionPairs, offset: 0, index: 0)
