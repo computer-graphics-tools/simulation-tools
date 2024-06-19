@@ -8,15 +8,15 @@ kernel void storeHalfPositions(
     outPositions[gid] = half4(positions[gid]);
 }
 
-kernel void computeParticleHash(
+kernel void computeVertexHash(
     device const half4* positions [[ buffer(0) ]],
     device uint2* hashTable [[ buffer(1) ]],
     constant uint& hashTableCapacity [[ buffer(2) ]],
-    constant float& gridSpacing [[ buffer(3) ]],
+    constant float& cellSize [[ buffer(3) ]],
     uint id [[ thread_position_in_grid ]])
 {
     float3 position = float3(positions[id].xyz);
-    uint hash = getHash(hashCoord(position, gridSpacing), hashTableCapacity);
+    uint hash = getHash(hashCoord(position, cellSize), hashTableCapacity);
     hashTable[id] = uint2(hash, id);
 }
 
@@ -59,36 +59,35 @@ kernel void cacheCollisions(
     constant uint* connectedVertices [[buffer(5)]],
     constant uint& hashTableCapacity [[ buffer(6) ]],
     constant float& spacingScale [[ buffer(7) ]],
-    constant float& gridSpacing [[ buffer(8) ]],
-    constant uint& maxCollisionCandidatesCount [[ buffer(10) ]],
-    constant uint& connectedVerticesCount [[ buffer(9) ]],
-    uint gid [[ thread_position_in_grid ]])
+    constant float& cellSize [[ buffer(8) ]],
+    constant uint& maxCollisionCandidatesCount [[ buffer(9) ]],
+    constant uint& connectedVerticesCount [[ buffer(10) ]],
+    uint id [[ thread_position_in_grid ]])
 {
-    uint id = hashTable[gid].y;
-    if (id == UINT_MAX) { return; }
+    uint index = hashTable[id].y;
+    if (index == UINT_MAX) { return; }
 
-    float3 position = float3(positions[id].xyz);
-    int3 hashPosition = hashCoord(position, gridSpacing);
+    float3 position = float3(positions[index].xyz);
+    int3 hashPosition = hashCoord(position, cellSize);
     int ix = hashPosition.x;
     int iy = hashPosition.y;
     int iz = hashPosition.z;
-
     
     uint4 simdConnectedVertices[MAX_CONNECTED_VERTICES / 4];
     uint simdConnectedVerticesCount = connectedVerticesCount / 4;
     for (uint i = 0; i < simdConnectedVerticesCount; i++) {
-        const uint index = id + 4 * i;
+        const uint connectedIndex = index + 4 * i;
         
         simdConnectedVerticesCount += 1;
         simdConnectedVertices[i] =  uint4(
-                                        connectedVertices[index],
-                                        connectedVertices[index + 1],
-                                        connectedVertices[index + 2],
-                                        connectedVertices[index + 3]
+                                        connectedVertices[connectedIndex],
+                                        connectedVertices[connectedIndex + 1],
+                                        connectedVertices[connectedIndex + 2],
+                                        connectedVertices[connectedIndex + 3]
                                         );
     }
         
-    const float proximity = gridSpacing * spacingScale;
+    const float proximity = cellSize * spacingScale;
     
     uint candidatesCount = 0;
     
@@ -103,7 +102,7 @@ kernel void cacheCollisions(
                 for (uint i = start; i < end; i++) {
                     uint collisionCandidate = hashTable[i].y;
                     if (collisionCandidate == UINT_MAX) { break; }
-                    if (collisionCandidate == id) { continue; }
+                    if (collisionCandidate == index) { continue; }
 
                     bool isConnected = false;
                     for (uint j = 0; j < simdConnectedVerticesCount; j++) {
@@ -117,16 +116,15 @@ kernel void cacheCollisions(
                     float errorSQ = distanceSQ - pow(proximity, 2.0);
                     if (errorSQ >= 0.0) { continue; }
 
-                    collisionCandidates[id * maxCollisionCandidatesCount + candidatesCount] = collisionCandidate;
+                    collisionCandidates[index * maxCollisionCandidatesCount + candidatesCount] = collisionCandidate;
                     candidatesCount += 1;
                     if (candidatesCount >= maxCollisionCandidatesCount) { return; }
-
                 }
             }
         }
     }
     
     if (candidatesCount < maxCollisionCandidatesCount) {
-        collisionCandidates[id * maxCollisionCandidatesCount + candidatesCount] = UINT_MAX;
+        collisionCandidates[index * maxCollisionCandidatesCount + candidatesCount] = UINT_MAX;
     }
 }

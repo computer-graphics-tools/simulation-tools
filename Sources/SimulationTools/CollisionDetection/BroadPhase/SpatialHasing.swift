@@ -1,7 +1,7 @@
 import MetalTools
 
 public final class SpatialHashing {
-    private let computeParticleHashState: MTLComputePipelineState
+    private let computeVertexHashState: MTLComputePipelineState
     private let findCellStartState: MTLComputePipelineState
     private let cacheCollisionsState: MTLComputePipelineState
     private let storeHalfPositionsState: MTLComputePipelineState
@@ -10,10 +10,10 @@ public final class SpatialHashing {
     private let halfPositions: MTLBuffer
     private let cellStart: MTLBuffer
     private let cellEnd: MTLBuffer
-    public let hashTable: (buffer: MTLBuffer, paddedCount: Int)
+    let hashTable: (buffer: MTLBuffer, paddedCount: Int)
     
     private let hashTableCapacity: Int
-    private let gridCellSpacing: Float
+    private let cellSize: Float
     private let collisionType: SelfCollisionType
     private let spacingScale: Float
     
@@ -22,26 +22,26 @@ public final class SpatialHashing {
     /// - Parameters:
     ///   - device: The Metal device.
     ///   - collisionType: The type of collision detection to use.
-    ///   - positions: An array of particle positions.
-    ///   - triangles: An array of triangle indices.
-    ///   - spacingScale: The scale factor for grid cell spacing.
+    ///   - positions: An array of vertex positions.
+    ///   - cellSize: The size of a cell in spatial grid.
+    ///   - spacingScale: The scale factor for cell spacing.
     ///   - heap: The Metal heap for resource allocation.
     /// - Throws: An error if the Metal library or pipeline states cannot be created.
     public init(
         device: MTLDevice,
         collisionType: SelfCollisionType,
         positions: [SIMD4<Float>],
-        triangles: [SIMD3<UInt32>],
         spacingScale: Float = 1,
+        cellSize: Float,
         heap: MTLHeap?
     ) throws {
-        let library = try device.makeDefaultLibrary(bundle: .main)
+        let library = try device.makeDefaultLibrary(bundle: .module)
         let vertexCount = positions.count
-        let trianglesCount = triangles.count
 
         self.spacingScale = spacingScale
         self.collisionType = collisionType
-        computeParticleHashState = try library.computePipelineState(function: "computeParticleHash")
+        self.cellSize = cellSize
+        computeVertexHashState = try library.computePipelineState(function: "computeVertexHash")
         findCellStartState = try library.computePipelineState(function: "findCellStart")
         cacheCollisionsState = try library.computePipelineState(function: "cacheCollisions")
         storeHalfPositionsState = try library.computePipelineState(function: "storeHalfPositions")
@@ -53,41 +53,30 @@ public final class SpatialHashing {
         cellStart = try device.buffer(for: UInt32.self, count: hashTableCapacity, heap: heap)
         cellEnd = try device.buffer(for: UInt32.self, count: hashTableCapacity, heap: heap)
         halfPositions = try device.buffer(for: SIMD4<Float16>.self, count: vertexCount, heap: heap)
-
-        let gridCellSpacingSum = triangles.reduce(Float.zero) { totalSum, triangleVertices in
-            let edgeLengthSum = (0..<3).reduce(0.0) { sum, index in
-                sum + length(positions[triangleVertices[index]].xyz - positions[triangleVertices[(index + 1) % 3]].xyz)
-            } / 3.0
-            
-            return totalSum + edgeLengthSum
-        }
-        
-        gridCellSpacing = (gridCellSpacingSum / Float(trianglesCount))
     }
     
     /// Builds the spatial hash and collision pairs for the given positions and triangles.
     /// - Parameters:
     ///   - commandBuffer: The Metal command buffer to encode the commands into.
-    ///   - positions: The buffer containing particle positions.
+    ///   - positions: The buffer containing vertex positions.
     ///   - collisionCandidates: The buffer to store collision pairs.
     ///   - connectedVertices: The buffer containing vertex neighborhood information.
-    ///   - positionsCount: The number of positions.
     public func build(
         commandBuffer: MTLCommandBuffer,
         positions: TypedMTLBuffer<SIMD4<Float>>,
         collisionCandidates: TypedMTLBuffer<UInt32>,
-        connectedVertices: TypedMTLBuffer<UInt32>
+        connectedVertices: TypedMTLBuffer<UInt32>?
     ) {
         commandBuffer.compute { encoder in
             encoder.setBuffer(positions.buffer, offset: 0, index: 0)
             encoder.setBuffer(halfPositions, offset: 0, index: 1)
-            encoder.dispatch1d(state: storeHalfPositionsState, exactly: positions.count)
+            encoder.dispatch1d(state: storeHalfPositionsState, exactlyOrCovering: positions.count)
             
             encoder.setBuffer(halfPositions, offset: 0, index: 0)
             encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
             encoder.setValue(UInt32(hashTableCapacity), at: 2)
-            encoder.setValue(gridCellSpacing, at: 3)
-            encoder.dispatch1d(state: computeParticleHashState, exactly: positions.count)
+            encoder.setValue(cellSize, at: 3)
+            encoder.dispatch1d(state: computeVertexHashState, exactlyOrCovering: positions.count)
         }
 
         bitonicSort.encode(data: hashTable.buffer, count: hashTable.paddedCount, in: commandBuffer)
@@ -100,21 +89,25 @@ public final class SpatialHashing {
 
             let threadgroupWidth = 256
             encoder.setThreadgroupMemoryLength((threadgroupWidth + 16) * MemoryLayout<UInt32>.size, index: 0)
-            encoder.dispatch1d(state: findCellStartState, exactly: positions.count, threadgroupWidth: threadgroupWidth)
+            encoder.dispatch1d(state: findCellStartState, exactlyOrCovering: positions.count, threadgroupWidth: threadgroupWidth)
 
             encoder.setBuffer(collisionCandidates.buffer, offset: 0, index: 0)
             encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
             encoder.setBuffer(cellStart, offset: 0, index: 2)
             encoder.setBuffer(cellEnd, offset: 0, index: 3)
             encoder.setBuffer(halfPositions, offset: 0, index: 4)
-            encoder.setBuffer(connectedVertices.buffer, offset: 0, index: 5)
+            if let connectedVertices {
+                encoder.setBuffer(connectedVertices.buffer, offset: 0, index: 5)
+            } else {
+                encoder.setValue([UInt32.zero], at: 5)
+            }
             encoder.setValue(UInt32(hashTableCapacity), at: 6)
             encoder.setValue(spacingScale, at: 7)
-            encoder.setValue(gridCellSpacing, at: 8)
-            encoder.setValue(collisionCandidates.count, at: 9)
-            encoder.setValue(connectedVertices.count, at: 10)
+            encoder.setValue(cellSize, at: 8)
+            encoder.setValue(UInt32(collisionCandidates.count / positions.count), at: 9)
+            encoder.setValue(UInt32((connectedVertices?.count ?? 0) / positions.count), at: 10)
 
-            encoder.dispatch1d(state: cacheCollisionsState, exactly: positions.count)
+            encoder.dispatch1d(state: cacheCollisionsState, exactlyOrCovering: positions.count)
         }
     }
 }
@@ -124,7 +117,7 @@ public extension SpatialHashing {
         let halfPositionsSize = positionsCount * MemoryLayout<SIMD4<Float16>>.stride
         let cellStartSize = positionsCount * MemoryLayout<UInt32>.stride
         let cellEndSize = positionsCount * MemoryLayout<UInt32>.stride
-        let hashTableSize = positionsCount * MemoryLayout<SIMD2<UInt32>>.stride
+        let hashTableSize = positionsCount * MemoryLayout<SIMD2<UInt32>>.stride * 2
         
         return halfPositionsSize + cellStartSize + cellEndSize + hashTableSize
     }
@@ -145,7 +138,6 @@ public class TypedMTLBuffer<Element> {
         heap: MTLHeap? = nil
     ) throws {
         count = elements.count
-        
         buffer = try (heap?.buffer(with: elements) ?? device.buffer(with: elements, options: options))
     }
 }
