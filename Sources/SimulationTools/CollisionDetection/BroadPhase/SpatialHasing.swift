@@ -4,7 +4,6 @@ public final class SpatialHashing {
     private let computeParticleHashState: MTLComputePipelineState
     private let findCellStartState: MTLComputePipelineState
     private let cacheCollisionsState: MTLComputePipelineState
-    private let reuseTrianglesCacheState: MTLComputePipelineState
     private let storeHalfPositionsState: MTLComputePipelineState
     private let bitonicSort: BitonicSort
 
@@ -44,10 +43,7 @@ public final class SpatialHashing {
         self.collisionType = collisionType
         computeParticleHashState = try library.computePipelineState(function: "computeParticleHash")
         findCellStartState = try library.computePipelineState(function: "findCellStart")
-        cacheCollisionsState = try library.computePipelineState(
-            function: collisionType == .vertexVertex ? "cacheCollisions" : "cacheTriangleCollisions"
-        )
-        reuseTrianglesCacheState = try library.computePipelineState(function: "reuseTrianglesCache")
+        cacheCollisionsState = try library.computePipelineState(function: "cacheCollisions")
         storeHalfPositionsState = try library.computePipelineState(function: "storeHalfPositions")
                 
         bitonicSort = try .init(library: library)
@@ -73,32 +69,25 @@ public final class SpatialHashing {
     /// - Parameters:
     ///   - commandBuffer: The Metal command buffer to encode the commands into.
     ///   - positions: The buffer containing particle positions.
-    ///   - collisionPairs: The buffer to store collision pairs.
-    ///   - vertexNeighborhood: The buffer containing vertex neighborhood information.
-    ///   - triangleNeighborhood: The buffer containing triangle neighborhood information.
-    ///   - triangles: The buffer containing triangle indices.
+    ///   - collisionCandidates: The buffer to store collision pairs.
+    ///   - connectedVertices: The buffer containing vertex neighborhood information.
     ///   - positionsCount: The number of positions.
-    ///   - trianglesCount: The number of triangles.
     public func build(
         commandBuffer: MTLCommandBuffer,
-        positions: MTLBuffer,
-        collisionPairs: MTLBuffer,
-        vertexNeighborhood: MTLBuffer,
-        triangleNeighborhood: MTLBuffer,
-        triangles: MTLBuffer,
-        positionsCount: Int,
-        trianglesCount: Int
+        positions: TypedMTLBuffer<SIMD4<Float>>,
+        collisionCandidates: TypedMTLBuffer<UInt32>,
+        connectedVertices: TypedMTLBuffer<UInt32>
     ) {
         commandBuffer.compute { encoder in
-            encoder.setBuffer(positions, offset: 0, index: 0)
+            encoder.setBuffer(positions.buffer, offset: 0, index: 0)
             encoder.setBuffer(halfPositions, offset: 0, index: 1)
-            encoder.dispatch1d(state: storeHalfPositionsState, exactly: positionsCount)
+            encoder.dispatch1d(state: storeHalfPositionsState, exactly: positions.count)
             
             encoder.setBuffer(halfPositions, offset: 0, index: 0)
             encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
             encoder.setValue(UInt32(hashTableCapacity), at: 2)
             encoder.setValue(gridCellSpacing, at: 3)
-            encoder.dispatch1d(state: computeParticleHashState, exactly: positionsCount)
+            encoder.dispatch1d(state: computeParticleHashState, exactly: positions.count)
         }
 
         bitonicSort.encode(data: hashTable.buffer, count: hashTable.paddedCount, in: commandBuffer)
@@ -107,66 +96,25 @@ public final class SpatialHashing {
             encoder.setBuffer(cellStart, offset: 0, index: 0)
             encoder.setBuffer(cellEnd, offset: 0, index: 1)
             encoder.setBuffer(hashTable.buffer, offset: 0, index: 2)
-            encoder.setValue(UInt32(positionsCount), at: 3)
+            encoder.setValue(UInt32(positions.count), at: 3)
+
             let threadgroupWidth = 256
             encoder.setThreadgroupMemoryLength((threadgroupWidth + 16) * MemoryLayout<UInt32>.size, index: 0)
-            encoder.dispatch1d(state: findCellStartState, exactly: positionsCount, threadgroupWidth: threadgroupWidth)
+            encoder.dispatch1d(state: findCellStartState, exactly: positions.count, threadgroupWidth: threadgroupWidth)
 
-            encoder.setBuffer(collisionPairs, offset: 0, index: 0)
+            encoder.setBuffer(collisionCandidates.buffer, offset: 0, index: 0)
             encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
             encoder.setBuffer(cellStart, offset: 0, index: 2)
             encoder.setBuffer(cellEnd, offset: 0, index: 3)
             encoder.setBuffer(halfPositions, offset: 0, index: 4)
-            encoder.setBuffer(vertexNeighborhood, offset: 0, index: 5)
+            encoder.setBuffer(connectedVertices.buffer, offset: 0, index: 5)
             encoder.setValue(UInt32(hashTableCapacity), at: 6)
             encoder.setValue(spacingScale, at: 7)
             encoder.setValue(gridCellSpacing, at: 8)
+            encoder.setValue(collisionCandidates.count, at: 9)
+            encoder.setValue(connectedVertices.count, at: 10)
 
-            if collisionType == .vertexVertex {
-                encoder.dispatch1d(state: cacheCollisionsState, exactly: positionsCount)
-            } else {
-                encoder.setBuffer(triangles, offset: 0, index: 9)
-                encoder.dispatch1d(state: cacheCollisionsState, exactly: trianglesCount)
-            }
-        }
-    }
-
-    /// Updates the collision pairs for vertex-triangle collisions by performing spatial-temporal reuse.
-    /// - Parameters:
-    ///   - commandBuffer: The Metal command buffer to encode the commands into.
-    ///   - positions: The buffer containing particle positions.
-    ///   - collisionPairs: The buffer to store collision pairs.
-    ///   - vertexNeighborhood: The buffer containing vertex neighborhood information.
-    ///   - triangleNeighborhood: The buffer containing triangle neighborhood information.
-    ///   - triangles: The buffer containing triangle indices.
-    ///   - positionsCount: The number of positions.
-    ///   - trianglesCount: The number of triangles.
-    public func update(
-        commandBuffer: MTLCommandBuffer,
-        positions: MTLBuffer,
-        collisionPairs: MTLBuffer,
-        vertexNeighborhood: MTLBuffer,
-        triangleNeighborhood: MTLBuffer,
-        triangles: MTLBuffer,
-        positionsCount: Int,
-        trianglesCount: Int
-    ) {
-        if collisionType == .vertexTriangle {
-            commandBuffer.compute { encoder in
-                encoder.setBuffer(collisionPairs, offset: 0, index: 0)
-                encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
-                encoder.setBuffer(cellStart, offset: 0, index: 2)
-                encoder.setBuffer(cellEnd, offset: 0, index: 3)
-                encoder.setBuffer(positions, offset: 0, index: 4)
-                encoder.setBuffer(vertexNeighborhood, offset: 0, index: 5)
-                encoder.setBuffer(triangles, offset: 0, index: 6)
-                encoder.setBuffer(triangleNeighborhood, offset: 0, index: 7)
-                encoder.setValue(UInt32(hashTableCapacity), at: 8)
-                encoder.setValue(spacingScale, at: 9)
-                encoder.setValue(gridCellSpacing, at: 10)
-
-                encoder.dispatch1d(state: reuseTrianglesCacheState, exactly: trianglesCount)
-            }
+            encoder.dispatch1d(state: cacheCollisionsState, exactly: positions.count)
         }
     }
 }
@@ -179,5 +127,25 @@ public extension SpatialHashing {
         let hashTableSize = positionsCount * MemoryLayout<SIMD2<UInt32>>.stride
         
         return halfPositionsSize + cellStartSize + cellEndSize + hashTableSize
+    }
+}
+
+public class TypedMTLBuffer<Element> {
+    let buffer: MTLBuffer
+    let count: Int
+    
+    var elements: [Element]? {
+        return buffer.array(of: Element.self, count: count)
+    }
+    
+    init(
+        elements: [Element],
+        options: MTLResourceOptions = [.storageModeShared],
+        device: MTLDevice,
+        heap: MTLHeap? = nil
+    ) throws {
+        count = elements.count
+        
+        buffer = try (heap?.buffer(with: elements) ?? device.buffer(with: elements, options: options))
     }
 }
