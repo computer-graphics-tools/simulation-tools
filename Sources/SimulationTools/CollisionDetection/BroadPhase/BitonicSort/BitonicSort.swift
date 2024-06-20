@@ -73,7 +73,7 @@ final class BitonicSort {
             } while params.y > .zero
         }
     }
-
+    
     static func buffer(
         count: Int,
         device: MTLDevice,
@@ -85,26 +85,6 @@ final class BitonicSort {
             paddingValue: SIMD2<UInt32>(UInt32.max, UInt32.max),
             device: device,
             heap: heap
-        )
-    }
-
-    private static func buffer<T>(
-        from array: [T],
-        paddingValue: T,
-        device: MTLDevice,
-        heap: MTLHeap?
-    ) throws -> (buffer: MTLBuffer, paddedCount: Int) {
-        let paddedCount = 1 << UInt(ceil(log2f(.init(array.count))))
-        var array = array
-        if paddedCount > array.count {
-            array += .init(
-                repeating: paddingValue,
-                count: paddedCount - array.count
-            )
-        }
-        return try (
-            buffer: device.buffer(with: array, heap: heap),
-            paddedCount: paddedCount
         )
     }
 

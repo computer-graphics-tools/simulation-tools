@@ -41,24 +41,13 @@ extension SIMD4 where Scalar == Float {
 
 extension MTLDevice {
     func buffer<T>(with array: [T], heap: MTLHeap?) throws -> MTLBuffer {
-        guard let heap else { return try self.buffer(with: array) }
-        let length = array.count * MemoryLayout<T>.stride
-        guard let buffer = heap.makeBuffer(length: length, options: []) else {
-            throw NSError(domain: "MTLBufferError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create MTLBuffer from heap"])
-        }
-        let pointer = buffer.contents().bindMemory(to: T.self, capacity: array.count)
-        array.withUnsafeBufferPointer { srcPointer in
-            pointer.update(from: srcPointer.baseAddress!, count: array.count)
-        }
+        let buffer = try buffer(for: T.self, count: array.count, heap: heap)
+        try buffer.put(array)
+        
         return buffer
     }
 
     func buffer<T>(for type: T.Type, count: Int, heap: MTLHeap?) throws -> MTLBuffer {
-        guard let heap else { return try self.buffer(for: type, count: count) }
-        let length = count * MemoryLayout<T>.stride
-        guard let buffer = heap.makeBuffer(length: length, options: []) else {
-            throw NSError(domain: "MTLBufferError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create MTLBuffer from heap"])
-        }
-        return buffer
+        return try (heap?.buffer(for: type, count: count, options: heap?.resourceOptions ?? []) ?? self.buffer(for: type, count: count))
     }
 }

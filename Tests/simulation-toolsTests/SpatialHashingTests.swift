@@ -61,9 +61,9 @@ final class SpatialHashingTests: XCTestCase {
             heap: nil
         )
         
-        let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(elements: positions, device: device)
+        let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(values: positions, device: device)
         let collisionCandidatesBuffer = try TypedMTLBuffer<UInt32>(
-            elements: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
+            values: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
             device: device
         )
         
@@ -88,7 +88,7 @@ final class SpatialHashingTests: XCTestCase {
     func testBuildMethodInitialization() throws {
         let positions = generateMockData()
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, cellSize: 0.5)
-        XCTAssertNotNil(collisionCandidatesBuffer.elements, "Collision candidates buffer should not be nil")
+        XCTAssertNotNil(collisionCandidatesBuffer.values, "Collision candidates buffer should not be nil")
     }
     
     func testCollisionCandidatesContainClosestProximity() throws {
@@ -100,7 +100,7 @@ final class SpatialHashingTests: XCTestCase {
         ]
         let candidatesCount = 4
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
-        let collisionCandidates = collisionCandidatesBuffer.elements!.chunked(into: candidatesCount).map { Set($0) }
+        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount).map { Set($0) }
         
         XCTAssertTrue(collisionCandidates[0].contains(1))
         XCTAssertTrue(collisionCandidates[1].contains(0))
@@ -112,7 +112,7 @@ final class SpatialHashingTests: XCTestCase {
         let positions = generateMockData()
         let candidatesCount = 4
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
-        let collisionCandidates = collisionCandidatesBuffer.elements!.chunked(into: candidatesCount).map { Set($0) }
+        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount).map { Set($0) }
         
         XCTAssertFalse(collisionCandidates[0].contains(0))
         XCTAssertFalse(collisionCandidates[1].contains(1))
@@ -130,7 +130,7 @@ final class SpatialHashingTests: XCTestCase {
         
         let candidatesCount = 4
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 0.5)
-        let collisionCandidates = collisionCandidatesBuffer.elements!.chunked(into: candidatesCount).map { Set($0) }
+        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount).map { Set($0) }
         
         XCTAssertFalse(collisionCandidates[0].contains(2))
         XCTAssertFalse(collisionCandidates[0].contains(3))
@@ -148,7 +148,7 @@ final class SpatialHashingTests: XCTestCase {
 
         let candidatesCount = 8
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
-        let collisionCandidates = collisionCandidatesBuffer.elements!.chunked(into: candidatesCount).map { Set($0) }
+        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount).map { Set($0) }
         
         for (i, candidates) in collisionCandidates.enumerated() {
             for candidate in candidates where candidate != UInt32.max {
@@ -181,10 +181,10 @@ final class SpatialHashingTests: XCTestCase {
                 heap: heap
             )
             
-            let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(elements: positions, device: device)
+            let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(values: positions, device: device)
             let candidatesCount = 8
             let collisionCandidatesBuffer = try TypedMTLBuffer<UInt32>(
-                elements: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
+                values: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
                 device: device
             )
             
@@ -194,7 +194,6 @@ final class SpatialHashingTests: XCTestCase {
                     return
                 }
 
-                let startTime = CFAbsoluteTimeGetCurrent()
                 
                 spatialHashing.build(
                     commandBuffer: commandBuffer,
@@ -203,12 +202,13 @@ final class SpatialHashingTests: XCTestCase {
                     connectedVertices: nil
                 )
                 
+                let startTime = CFAbsoluteTimeGetCurrent()
                 commandBuffer.addCompletedHandler { _ in
                     let endTime = CFAbsoluteTimeGetCurrent()
                     let duration = (endTime - startTime) * 1000
                     print("Performance test for \(count) positions took \(duration) ms")
-                    
                 }
+
                 commandBuffer.commit()
                 commandBuffer.waitUntilCompleted()
             
@@ -229,5 +229,9 @@ final class SpatialHashingTests: XCTestCase {
     
     func testPerformanceFor100kPositions() throws {
         try testPerformanceForPositions(100_000)
+    }
+    
+    func testPerformanceFor1mPositions() throws {
+        try testPerformanceForPositions(1_000_000)
     }
 }

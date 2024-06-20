@@ -31,7 +31,7 @@ kernel void computeVertexHash(
     hashTable[id] = uint2(hash, id);
 }
 
-kernel void findCellStart(
+kernel void findCellBounds(
     device uint* cellStart [[ buffer(0) ]],
     device uint* cellEnd [[ buffer(1) ]],
     device const uint2* hashTable [[ buffer(2) ]],
