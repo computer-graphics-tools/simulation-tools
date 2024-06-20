@@ -8,6 +8,17 @@ kernel void storeHalfPositions(
     outPositions[gid] = half4(positions[gid]);
 }
 
+kernel void storeSortedHalfPositions(
+   constant half4 *positions [[ buffer(0) ]],
+   device half4 *outPositions [[ buffer(1) ]],
+   constant uint2* hashTable [[ buffer(2) ]],
+   uint id [[thread_position_in_grid]])
+{
+    uint2 hashAndIndex = hashTable[id];
+    half3 position = half3(positions[hashAndIndex.y].xyz);
+    outPositions[id] = half4(position, 1.0);
+}
+
 kernel void computeVertexHash(
     device const half4* positions [[ buffer(0) ]],
     device uint2* hashTable [[ buffer(1) ]],
@@ -55,7 +66,7 @@ kernel void cacheCollisions(
     constant uint2* hashTable [[ buffer(1) ]],
     constant uint* cellStart [[ buffer(2) ]],
     constant uint* cellEnd [[ buffer(3) ]],
-    constant half4* positions [[ buffer(4) ]],
+    constant half4* sortedPositions [[ buffer(4) ]],
     constant uint* connectedVertices [[buffer(5)]],
     constant uint& hashTableCapacity [[ buffer(6) ]],
     constant float& spacingScale [[ buffer(7) ]],
@@ -67,7 +78,7 @@ kernel void cacheCollisions(
     uint index = hashTable[id].y;
     if (index == UINT_MAX) { return; }
 
-    float3 position = float3(positions[index].xyz);
+    float3 position = float3(sortedPositions[id].xyz);
     int3 hashPosition = hashCoord(position, cellSize);
     int ix = hashPosition.x;
     int iy = hashPosition.y;
@@ -110,7 +121,7 @@ kernel void cacheCollisions(
                     }
                     if (isConnected) { continue; }
 
-                    float3 candidatePosition = float3(positions[collisionCandidate].xyz);
+                    float3 candidatePosition = float3(sortedPositions[i].xyz);
                     float3 diff = position - candidatePosition;
                     float distanceSQ = length_squared(diff);
                     float errorSQ = distanceSQ - pow(proximity, 2.0);

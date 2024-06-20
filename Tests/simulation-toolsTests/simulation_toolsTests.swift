@@ -48,7 +48,7 @@ final class SpatialHashingTests: XCTestCase {
         }
     }
     
-    func collisionCandidates(positions: [SIMD4<Float>], cellSize: Float) throws -> TypedMTLBuffer<UInt32> {
+    func collisionCandidates(positions: [SIMD4<Float>], candidatesCount: Int = 8, cellSize: Float) throws -> TypedMTLBuffer<UInt32> {
         let collisionType = SelfCollisionType.vertexVertex
         let spacingScale: Float = 1.0
         
@@ -62,7 +62,6 @@ final class SpatialHashingTests: XCTestCase {
         )
         
         let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(elements: positions, device: device)
-        let candidatesCount = 8
         let collisionCandidatesBuffer = try TypedMTLBuffer<UInt32>(
             elements: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
             device: device
@@ -99,8 +98,8 @@ final class SpatialHashingTests: XCTestCase {
             SIMD4<Float>(1.0, 0.0, 0.0, 1.0),
             SIMD4<Float>(1.5, 0.0, 0.0, 1.0)
         ]
-        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, cellSize: 1.0)
         let candidatesCount = 4
+        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
         let collisionCandidates = collisionCandidatesBuffer.elements!.chunked(into: candidatesCount).map { Set($0) }
         
         XCTAssertTrue(collisionCandidates[0].contains(1))
@@ -111,8 +110,8 @@ final class SpatialHashingTests: XCTestCase {
     
     func testCollisionCandidatesDoNotContainSelf() throws {
         let positions = generateMockData()
-        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, cellSize: 1.0)
         let candidatesCount = 4
+        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
         let collisionCandidates = collisionCandidatesBuffer.elements!.chunked(into: candidatesCount).map { Set($0) }
         
         XCTAssertFalse(collisionCandidates[0].contains(0))
@@ -128,8 +127,9 @@ final class SpatialHashingTests: XCTestCase {
             SIMD4<Float>(1.0, 0.0, 0.0, 1.0),
             SIMD4<Float>(1.5, 0.0, 0.0, 1.0)
         ]
-        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, cellSize: 0.5)
+        
         let candidatesCount = 4
+        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 0.5)
         let collisionCandidates = collisionCandidatesBuffer.elements!.chunked(into: candidatesCount).map { Set($0) }
         
         XCTAssertFalse(collisionCandidates[0].contains(2))
@@ -146,8 +146,8 @@ final class SpatialHashingTests: XCTestCase {
     func testCollisionCandidatesSymmetry() throws {
         let positions = generateMockData()
 
-        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, cellSize: 1.0)
         let candidatesCount = 8
+        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
         let collisionCandidates = collisionCandidatesBuffer.elements!.chunked(into: candidatesCount).map { Set($0) }
         
         for (i, candidates) in collisionCandidates.enumerated() {

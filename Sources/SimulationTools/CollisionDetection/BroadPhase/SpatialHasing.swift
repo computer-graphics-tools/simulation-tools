@@ -5,9 +5,13 @@ public final class SpatialHashing {
     private let findCellStartState: MTLComputePipelineState
     private let cacheCollisionsState: MTLComputePipelineState
     private let storeHalfPositionsState: MTLComputePipelineState
+    private let storeSortedHalfPositionsState: MTLComputePipelineState
+    
     private let bitonicSort: BitonicSort
 
     private let halfPositions: MTLBuffer
+    let halfSortedPositions: MTLBuffer
+
     private let cellStart: MTLBuffer
     private let cellEnd: MTLBuffer
     let hashTable: (buffer: MTLBuffer, paddedCount: Int)
@@ -45,7 +49,8 @@ public final class SpatialHashing {
         findCellStartState = try library.computePipelineState(function: "findCellStart")
         cacheCollisionsState = try library.computePipelineState(function: "cacheCollisions")
         storeHalfPositionsState = try library.computePipelineState(function: "storeHalfPositions")
-                
+        storeSortedHalfPositionsState = try library.computePipelineState(function: "storeSortedHalfPositions")
+
         bitonicSort = try .init(library: library)
         
         hashTableCapacity = vertexCount
@@ -53,6 +58,7 @@ public final class SpatialHashing {
         cellStart = try device.buffer(for: UInt32.self, count: hashTableCapacity, heap: heap)
         cellEnd = try device.buffer(for: UInt32.self, count: hashTableCapacity, heap: heap)
         halfPositions = try device.buffer(for: SIMD4<Float16>.self, count: vertexCount, heap: heap)
+        halfSortedPositions = try device.buffer(for: SIMD4<Float16>.self, count: vertexCount, heap: heap)
     }
     
     /// Builds the spatial hash and collision pairs for the given positions and triangles.
@@ -82,6 +88,11 @@ public final class SpatialHashing {
         bitonicSort.encode(data: hashTable.buffer, count: hashTable.paddedCount, in: commandBuffer)
 
         commandBuffer.compute { encoder in
+            encoder.setBuffer(halfPositions, offset: 0, index: 0)
+            encoder.setBuffer(halfSortedPositions, offset: 0, index: 1)
+            encoder.setBuffer(hashTable.buffer, offset: 0, index: 2)
+            encoder.dispatch1d(state: storeSortedHalfPositionsState, exactlyOrCovering: positions.count)
+            
             encoder.setBuffer(cellStart, offset: 0, index: 0)
             encoder.setBuffer(cellEnd, offset: 0, index: 1)
             encoder.setBuffer(hashTable.buffer, offset: 0, index: 2)
@@ -95,7 +106,7 @@ public final class SpatialHashing {
             encoder.setBuffer(hashTable.buffer, offset: 0, index: 1)
             encoder.setBuffer(cellStart, offset: 0, index: 2)
             encoder.setBuffer(cellEnd, offset: 0, index: 3)
-            encoder.setBuffer(halfPositions, offset: 0, index: 4)
+            encoder.setBuffer(halfSortedPositions, offset: 0, index: 4)
             if let connectedVertices {
                 encoder.setBuffer(connectedVertices.buffer, offset: 0, index: 5)
             } else {
@@ -114,7 +125,7 @@ public final class SpatialHashing {
 
 public extension SpatialHashing {
     static func totalBuffersSize(positionsCount: Int) -> Int {
-        let halfPositionsSize = positionsCount * MemoryLayout<SIMD4<Float16>>.stride
+        let halfPositionsSize = positionsCount * MemoryLayout<SIMD4<Float16>>.stride * 2
         let cellStartSize = positionsCount * MemoryLayout<UInt32>.stride
         let cellEndSize = positionsCount * MemoryLayout<UInt32>.stride
         let hashTableSize = positionsCount * MemoryLayout<SIMD2<UInt32>>.stride * 2
