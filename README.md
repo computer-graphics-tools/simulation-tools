@@ -40,10 +40,10 @@ guard let commandQueue = device.makeCommandQueue() else {
 
 // Define positions for vertices
 let positions: [SIMD4<Float>] = [
-    SIMD4<Float>(0.0, 0.0, 0.0, 1.0),
-    SIMD4<Float>(1.0, 1.0, 1.0, 1.0),
-    SIMD4<Float>(-1.0, 1.0, 1.0, 1.0),
-    SIMD4<Float>(1.0, -1.0, 1.0, 1.0)
+    [0.0, 0.0, 0.0, 1.0],
+    [1.0, 1.0, 1.0, 1.0],
+    [-1.0, 1.0, 1.0, 1.0],
+    [1.0, -1.0, 1.0, 1.0]
 ]
 
 // Configure spatial hashing
@@ -63,10 +63,10 @@ do {
     )
 
     // Create buffers
-    let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(values: positions, device: device)
+    let positionsBuffer = try device.typedBuffer(with: positions)
     let nCandindatesPerPosition = 8
-    let collisionCandidatesBuffer = device.typedBuffer(
-         values: Array(repeating: UInt32.max, count: positions.count * nCandindatesPerPosition)
+    let collisionCandidatesBuffer = try device.typedBuffer(
+         with: Array(repeating: UInt32.max, count: positions.count * nCandindatesPerPosition)
     )
 
     // Create command buffer
@@ -82,7 +82,7 @@ do {
         connectedVertices: nil
     )
 
-        commandBuffer.addCompletedHandler { _ in 
+        commandBuffer.addCompletedHandler { _ in
         // Process collision candidates
         if let collisionCandidates = collisionCandidatesBuffer.values {
             for i in 0 ..< positions.count {

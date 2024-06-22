@@ -1,6 +1,6 @@
 import XCTest
 import Metal
-@testable import simulation_tools
+@testable import SimulationTools
 
 final class SpatialHashingTests: XCTestCase {
     var device: MTLDevice!
@@ -20,10 +20,10 @@ final class SpatialHashingTests: XCTestCase {
     
     func testSpatialHashingInitialization() throws {
         let positions: [SIMD4<Float>] = [
-            SIMD4<Float>(0.0, 0.0, 0.0, 1.0),
-            SIMD4<Float>(1.0, 1.0, 1.0, 1.0),
-            SIMD4<Float>(-1.0, 1.0, 1.0, 1.0),
-            SIMD4<Float>(1.0, -1.0, 1.0, 1.0)
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [-1.0, 1.0, 1.0, 1.0],
+            [1.0, -1.0, 1.0, 1.0]
         ]
         let config = SpatialHashing.Configuration(
             cellSize: 1.0,
@@ -44,7 +44,7 @@ final class SpatialHashingTests: XCTestCase {
     func generateMockData() -> [SIMD4<Float>] {
         return (0..<100).map { i in
             let angle = Float(i) * Float.pi / 50.0
-            return SIMD4<Float>(cos(angle) * 10.0, sin(angle) * 10.0, 0.0, 1.0)
+            return [cos(angle) * 10.0, sin(angle) * 10.0, 0.0, 1.0]
         }
     }
     
@@ -62,10 +62,9 @@ final class SpatialHashingTests: XCTestCase {
             heap: nil
         )
         
-        let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(values: positions, device: self.device)
-        let collisionCandidatesBuffer = try TypedMTLBuffer<UInt32>(
-            values: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
-            device: self.device
+        let positionsBuffer = try device.typedBuffer(with: positions)
+        let collisionCandidatesBuffer = try device.typedBuffer(
+            with: Array(repeating: UInt32.max, count: positions.count * candidatesCount)
         )
         
         guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
@@ -94,10 +93,10 @@ final class SpatialHashingTests: XCTestCase {
     
     func testCollisionCandidatesContainClosestProximity() throws {
         let positions: [SIMD4<Float>] = [
-            SIMD4<Float>(-0.5, 0.0, 0.0, 1.0),
-            SIMD4<Float>(0.0, 0.0, 0.0, 1.0),
-            SIMD4<Float>(1.0, 0.0, 0.0, 1.0),
-            SIMD4<Float>(1.5, 0.0, 0.0, 1.0)
+            [-0.5, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [1.5, 0.0, 0.0, 1.0]
         ]
         let candidatesCount = 4
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
@@ -123,10 +122,10 @@ final class SpatialHashingTests: XCTestCase {
     
     func testCollisionCandidatesDoNotContainNonClosestProximity() throws {
         let positions: [SIMD4<Float>] = [
-            SIMD4<Float>(-0.5, 0.0, 0.0, 1.0),
-            SIMD4<Float>(0.0, 0.0, 0.0, 1.0),
-            SIMD4<Float>(1.0, 0.0, 0.0, 1.0),
-            SIMD4<Float>(1.5, 0.0, 0.0, 1.0)
+            [-0.5, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [1.5, 0.0, 0.0, 1.0]
         ]
         
         let candidatesCount = 4
@@ -160,10 +159,10 @@ final class SpatialHashingTests: XCTestCase {
     
     func testConnectedVerticesExclusion() throws {
         let positions: [SIMD4<Float>] = [
-            SIMD4<Float>(0.0, 0.0, 0.0, 1.0),
-            SIMD4<Float>(0.1, 0.0, 0.0, 1.0),  // Connected to 0, closer than cell size
-            SIMD4<Float>(0.5, 0.0, 0.0, 1.0),  // Not connected, within cell size
-            SIMD4<Float>(1.5, 0.0, 0.0, 1.0)   // Not connected, outside cell size
+            [0.0, 0.0, 0.0, 1.0],
+            [0.1, 0.0, 0.0, 1.0],  // Connected to 0, closer than cell size
+            [0.5, 0.0, 0.0, 1.0],  // Not connected, within cell size
+            [1.5, 0.0, 0.0, 1.0]   // Not connected, outside cell size
         ]
         
         let cellSize: Float = 1.0
@@ -181,10 +180,9 @@ final class SpatialHashingTests: XCTestCase {
             heap: nil
         )
         
-        let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(values: positions, device: self.device)
-        let collisionCandidatesBuffer = try TypedMTLBuffer<UInt32>(
-            values: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
-            device: self.device
+        let positionsBuffer = try device.typedBuffer(with: positions)
+        let collisionCandidatesBuffer = try device.typedBuffer(
+            with: Array(repeating: UInt32.max, count: positions.count * candidatesCount)
         )
         
         // Specify connected vertices: 0 and 1 are connected
@@ -194,7 +192,7 @@ final class SpatialHashingTests: XCTestCase {
             UInt32.max, UInt32.max, UInt32.max, UInt32.max,  // For vertex 2
             UInt32.max, UInt32.max, UInt32.max, UInt32.max   // For vertex 3
         ]
-        let connectedVerticesBuffer = try TypedMTLBuffer<UInt32>(values: connectedVertices, device: self.device)
+        let connectedVerticesBuffer = try device.typedBuffer(with: connectedVertices)
         
         guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
             XCTFail("Failed to create command buffer")
@@ -236,12 +234,12 @@ final class SpatialHashingTests: XCTestCase {
     
     func testPerformanceForPositions(_ count: Int) throws {
         let positions: [SIMD4<Float>] = (0..<count).map { _ in
-            SIMD4<Float>(
+            [
                 Float.random(in: -100...100),
                 Float.random(in: -100...100),
                 Float.random(in: -100...100),
                 1.0
-            )
+            ]
         }
         let config = SpatialHashing.Configuration(
             cellSize: 1.0,
@@ -258,11 +256,10 @@ final class SpatialHashingTests: XCTestCase {
                 heap: heap
             )
             
-            let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(values: positions, device: self.device)
             let candidatesCount = 8
-            let collisionCandidatesBuffer = try TypedMTLBuffer<UInt32>(
-                values: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
-                device: self.device
+            let positionsBuffer = try device.typedBuffer(with: positions)
+            let collisionCandidatesBuffer = try device.typedBuffer(
+                with: Array(repeating: UInt32.max, count: positions.count * candidatesCount)
             )
             
             measure {

@@ -33,13 +33,15 @@ extension Collection {
     var isNotEmpty: Bool { !isEmpty }
 }
 
-extension SIMD4 where Scalar == Float {
-    var xyz: SIMD3<Float> {
-        .init(x: x, y: y, z: z)
-    }
-}
-
 extension MTLDevice {
+    func typedBuffer<T>(with array: [T], heap: MTLHeap? = nil) throws -> TypedMTLBuffer<T> {
+        try TypedMTLBuffer(values: array, device: self, heap: heap)
+    }
+    
+    func typedBuffer<T>(for type: T.Type, count: Int, heap: MTLHeap? = nil) throws -> TypedMTLBuffer<T> {
+        try TypedMTLBuffer(count: count, device: self)
+    }
+
     func buffer<T>(with array: [T], heap: MTLHeap?) throws -> MTLBuffer {
         let buffer = try buffer(for: T.self, count: array.count, heap: heap)
         try buffer.put(array)

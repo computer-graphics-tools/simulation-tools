@@ -8,7 +8,7 @@ let package = Package(
     platforms: [
         .iOS(.v14),
         .macOS(.v11),
-        .macCatalyst(.v13)
+        .macCatalyst(.v14)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
@@ -30,13 +30,13 @@ let package = Package(
                 .product(name: "MetalComputeTools", package: "metal-tools")
             ],
             resources: [
-                .process("SimulationTools/CollisionDetection/BroadPhase/BitonicSort/BitonicSort.metal"),
-                .process("SimulationTools/CollisionDetection/BroadPhase/SpatialHashing.metal"),
+                .process("CollisionDetection/BroadPhase/BitonicSort/BitonicSort.metal"),
+                .process("CollisionDetection/BroadPhase/SpatialHashing.metal"),
             ]
         ),
         .testTarget(
-            name: "simulation-toolsTests",
-            dependencies: ["simulation-tools"]
+            name: "SimulationToolsTests",
+            dependencies: ["SimulationTools"]
         ),
     ]
 )
