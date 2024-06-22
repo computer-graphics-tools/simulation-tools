@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "simulation-tools",
     platforms: [
-        .iOS(.v13),
+        .iOS(.v14),
         .macOS(.v11),
         .macCatalyst(.v13)
     ],
@@ -30,8 +30,8 @@ let package = Package(
                 .product(name: "MetalComputeTools", package: "metal-tools")
             ],
             resources: [
-                .process("SimulationTools/BroadPhaseCD/BitonicSort/BitonicSort.metal"),
-                .process("SimulationTools/BroadPhaseCD/SpatialHashing.metal"),
+                .process("SimulationTools/CollisionDetection/BroadPhase/BitonicSort/BitonicSort.metal"),
+                .process("SimulationTools/CollisionDetection/BroadPhase/SpatialHashing.metal"),
             ]
         ),
         .testTarget(
