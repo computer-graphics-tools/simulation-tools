@@ -46,14 +46,35 @@ public final class SpatialHashing {
         heap: MTLHeap?
     ) throws {
         let library = try device.makeDefaultLibrary(bundle: .module)
+        let deviceSupportsNonuniformThreadgroups = library.device
+            .supports(feature: .nonUniformThreadgroups)
+
+        let constantValues = MTLFunctionConstantValues()
+        constantValues.set(deviceSupportsNonuniformThreadgroups, at: 0)
+
         let vertexCount = positions.count
 
         self.configuration = configuration
-        self.computeVertexHashAndIndexState = try library.computePipelineState(function: "computeVertexHashAndIndex")
-        self.computeCellBoundariesState = try library.computePipelineState(function: "computeCellBoundaries")
-        self.findCollisionCandidatesState = try library.computePipelineState(function: "findCollisionCandidates")
-        self.convertToHalfPrecisionPositionsState = try library.computePipelineState(function: "convertToHalfPrecisionPositions")
-        self.reorderHalfPrecisionPositionsState = try library.computePipelineState(function: "reorderHalfPrecisionPositions")
+        self.computeVertexHashAndIndexState = try library.computePipelineState(
+            function: "computeVertexHashAndIndex",
+            constants: constantValues
+        )
+        self.computeCellBoundariesState = try library.computePipelineState(
+            function: "computeCellBoundaries",
+            constants: constantValues
+        )
+        self.findCollisionCandidatesState = try library.computePipelineState(
+            function: "findCollisionCandidates",
+            constants: constantValues
+        )
+        self.convertToHalfPrecisionPositionsState = try library.computePipelineState(
+            function: "convertToHalfPrecisionPositions",
+            constants: constantValues
+        )
+        self.reorderHalfPrecisionPositionsState = try library.computePipelineState(
+            function: "reorderHalfPrecisionPositions",
+            constants: constantValues
+        )
 
         self.bitonicSort = try .init(library: library)
         
@@ -80,12 +101,14 @@ public final class SpatialHashing {
         commandBuffer.compute { encoder in
             encoder.setBuffer(positions.buffer, offset: 0, index: 0)
             encoder.setBuffer(self.halfPositions, offset: 0, index: 1)
+            encoder.setValue(UInt32(positions.count), at: 2)
             encoder.dispatch1d(state: self.convertToHalfPrecisionPositionsState, exactlyOrCovering: positions.count)
 
             encoder.setBuffer(self.halfPositions, offset: 0, index: 0)
             encoder.setBuffer(self.hashTable.buffer, offset: 0, index: 1)
             encoder.setValue(UInt32(self.hashTableCapacity), at: 2)
             encoder.setValue(self.configuration.cellSize, at: 3)
+            encoder.setValue(UInt32(positions.count), at: 4)
             encoder.dispatch1d(state: self.computeVertexHashAndIndexState, exactlyOrCovering: positions.count)
         }
 
@@ -95,13 +118,12 @@ public final class SpatialHashing {
             encoder.setBuffer(self.halfPositions, offset: 0, index: 0)
             encoder.setBuffer(self.sortedHalfPositions, offset: 0, index: 1)
             encoder.setBuffer(self.hashTable.buffer, offset: 0, index: 2)
-            encoder.dispatch1d(state: self.reorderHalfPrecisionPositionsState, exactlyOrCovering: positions.count)
-            
-            encoder.setBuffer(self.cellStart, offset: 0, index: 0)
-            encoder.setBuffer(self.cellEnd, offset: 0, index: 1)
             encoder.setValue(UInt32(positions.count), at: 3)
+            encoder.dispatch1d(state: self.reorderHalfPrecisionPositionsState, exactlyOrCovering: positions.count)
 
             let threadgroupWidth = 256
+            encoder.setBuffer(self.cellStart, offset: 0, index: 0)
+            encoder.setBuffer(self.cellEnd, offset: 0, index: 1)
             encoder.setThreadgroupMemoryLength((threadgroupWidth + 16) * MemoryLayout<UInt32>.size, index: 0)
             encoder.dispatch1d(state: self.computeCellBoundariesState, exactlyOrCovering: positions.count, threadgroupWidth: threadgroupWidth)
 
@@ -120,6 +142,7 @@ public final class SpatialHashing {
             encoder.setValue(self.configuration.cellSize, at: 8)
             encoder.setValue(UInt32(collisionCandidates.count / positions.count), at: 9)
             encoder.setValue(UInt32((connectedVertices?.count ?? 0) / positions.count), at: 10)
+            encoder.setValue(UInt32(positions.count), at: 11)
 
             encoder.dispatch1d(state: self.findCollisionCandidatesState, exactlyOrCovering: positions.count)
         }

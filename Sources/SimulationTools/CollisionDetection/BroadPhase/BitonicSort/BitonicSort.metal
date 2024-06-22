@@ -1,6 +1,9 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "../../../Common/Definitions.h"
+
+
 #define SORT(F,L,R) {           \
     const auto v = sort(F,L,R); \
     (L) = uint2(v.x, v.y);      \
@@ -52,6 +55,7 @@ kernel void bitonicSortFirstPass(device uint2* data [[ buffer(0) ]],
                                  const uint threadgroupSize [[ threads_per_threadgroup ]],
                                  const uint indexInThreadgroup [[ thread_index_in_threadgroup ]],
                                  const uint position [[ thread_position_in_grid ]]) {
+    if (!deviceSupportsNonuniformThreadgroups && position >= gridSize) { return; }
     loadShared(threadgroupSize, indexInThreadgroup, position, data, shared);
     threadgroup_barrier(mem_flags::mem_threadgroup);
     for (uint unitSize = 1; unitSize <= threadgroupSize; unitSize <<= 1) {
@@ -69,6 +73,7 @@ kernel void bitonicSortGeneralPass(device uint2* data [[ buffer(0) ]],
                                    constant uint& gridSize [[ buffer(1) ]],
                                    constant uint2& params [[ buffer(2) ]],
                                    const uint position [[ thread_position_in_grid ]]) {
+    if (!deviceSupportsNonuniformThreadgroups && position >= gridSize) { return; }
     const bool reverse = (position & (params.x >> 1)) != 0; // to toggle direction
     const uint blockSize = params.y; // size of comparison sets
     const auto left = genLeftIndex(position, blockSize);
@@ -82,6 +87,7 @@ kernel void bitonicSortFinalPass(device uint2* data,
                                  const uint threadgroupSize [[ threads_per_threadgroup ]],
                                  const uint indexInThreadgroup [[ thread_index_in_threadgroup ]],
                                  const uint position [[ thread_position_in_grid ]]) {
+    if (!deviceSupportsNonuniformThreadgroups && position >= gridSize) { return; }
     loadShared(threadgroupSize, indexInThreadgroup, position, data, shared);
     const auto unitSize = params.x;
     const auto blockSize = params.y;

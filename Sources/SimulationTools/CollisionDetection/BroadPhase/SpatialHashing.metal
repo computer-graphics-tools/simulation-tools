@@ -1,10 +1,14 @@
 #include "../../Common/BroadPhaseCommon.h"
+#include "../../Common/Definitions.h"
+
 
 kernel void convertToHalfPrecisionPositions(
    constant float4 *positions [[ buffer(0) ]],
    device half4 *outPositions [[ buffer(1) ]],
+   constant uint& gridSize [[ buffer(2) ]],
    uint gid [[thread_position_in_grid]])
 {
+    if (!deviceSupportsNonuniformThreadgroups && gid >= gridSize) { return; }
     outPositions[gid] = half4(positions[gid]);
 }
 
@@ -12,11 +16,13 @@ kernel void reorderHalfPrecisionPositions(
    constant half4 *positions [[ buffer(0) ]],
    device half4 *outPositions [[ buffer(1) ]],
    constant uint2* hashTable [[ buffer(2) ]],
-   uint id [[thread_position_in_grid]])
+   constant uint& gridSize [[ buffer(3) ]],
+   uint gid [[thread_position_in_grid]])
 {
-    uint2 hashAndIndex = hashTable[id];
+    if (!deviceSupportsNonuniformThreadgroups && gid >= gridSize) { return; }
+    uint2 hashAndIndex = hashTable[gid];
     half3 position = half3(positions[hashAndIndex.y].xyz);
-    outPositions[id] = half4(position, 1.0);
+    outPositions[gid] = half4(position, 1.0);
 }
 
 kernel void computeVertexHashAndIndex(
@@ -24,40 +30,43 @@ kernel void computeVertexHashAndIndex(
     device uint2* hashTable [[ buffer(1) ]],
     constant uint& hashTableCapacity [[ buffer(2) ]],
     constant float& cellSize [[ buffer(3) ]],
-    uint id [[ thread_position_in_grid ]])
+    constant uint& gridSize [[ buffer(4) ]],
+    uint gid [[ thread_position_in_grid ]])
 {
-    float3 position = float3(positions[id].xyz);
+    if (!deviceSupportsNonuniformThreadgroups && gid >= gridSize) { return; }
+    float3 position = float3(positions[gid].xyz);
     uint hash = getHash(hashCoord(position, cellSize), hashTableCapacity);
-    hashTable[id] = uint2(hash, id);
+    hashTable[gid] = uint2(hash, gid);
 }
 
 kernel void computeCellBoundaries(
     device uint* cellStart [[ buffer(0) ]],
     device uint* cellEnd [[ buffer(1) ]],
     device const uint2* hashTable [[ buffer(2) ]],
-    constant uint& positionsCount [[ buffer(3) ]],
-    uint id [[ thread_position_in_grid ]],
+    constant uint& gridSize [[ buffer(3) ]],
+    uint gid [[ thread_position_in_grid ]],
     uint threadIdx [[ thread_position_in_threadgroup ]],
     threadgroup uint* sharedHash [[ threadgroup(0) ]])
 {
-    uint2 hashIndex = hashTable[id];
+    if (!deviceSupportsNonuniformThreadgroups && gid >= gridSize) { return; }
+    uint2 hashIndex = hashTable[gid];
     uint hash = hashIndex.x;
     sharedHash[threadIdx + 1] = hash;
-    if (id > 0 && threadIdx == 0) {
-        sharedHash[0] = hashTable[id - 1].x;
+    if (gid > 0 && threadIdx == 0) {
+        sharedHash[0] = hashTable[gid - 1].x;
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    if (id == 0 || hash != sharedHash[threadIdx]) {
-        cellStart[hash] = id;
+    if (gid == 0 || hash != sharedHash[threadIdx]) {
+        cellStart[hash] = gid;
 
-        if (id > 0) {
-            cellEnd[sharedHash[threadIdx]] = id;
+        if (gid > 0) {
+            cellEnd[sharedHash[threadIdx]] = gid;
         }
     }
 
-    if (id == positionsCount - 1) {
-        cellEnd[hash] = id + 1;
+    if (gid == gridSize - 1) {
+        cellEnd[hash] = gid + 1;
     }
 }
 
@@ -73,12 +82,14 @@ kernel void findCollisionCandidates(
     constant float& cellSize [[ buffer(8) ]],
     constant uint& maxCollisionCandidatesCount [[ buffer(9) ]],
     constant uint& connectedVerticesCount [[ buffer(10) ]],
-    uint id [[ thread_position_in_grid ]])
+    constant uint& gridSize [[ buffer(11) ]],
+    uint gid [[ thread_position_in_grid ]])
 {
-    uint index = hashTable[id].y;
+    if (!deviceSupportsNonuniformThreadgroups && gid >= gridSize) { return; }
+    uint index = hashTable[gid].y;
     if (index == UINT_MAX) { return; }
 
-    float3 position = float3(sortedPositions[id].xyz);
+    float3 position = float3(sortedPositions[gid].xyz);
     int3 hashPosition = hashCoord(position, cellSize);
     int ix = hashPosition.x;
     int iy = hashPosition.y;
