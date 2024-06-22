@@ -27,12 +27,11 @@ Here's a basic example of how to use the SpatialHashing class:
 
 ```swift
 import Metal
-import simulation_tools
+import SimulationTools
 
 // Initialize Metal device
-guard let device = MTLCreateSystemDefaultDevice() else {
-    fatalError("Metal is not supported on this device")
-}
+guard let device = MTLCreateSystemDefaultDevice()
+else { fatalError("Metal is not supported on this device") }
 
 // Create a command queue
 guard let commandQueue = device.makeCommandQueue() else {
@@ -65,9 +64,9 @@ do {
 
     // Create buffers
     let positionsBuffer = try TypedMTLBuffer<SIMD4<Float>>(values: positions, device: device)
-    let collisionCandidatesBuffer = try TypedMTLBuffer<UInt32>(
-        values: Array(repeating: UInt32.max, count: positions.count * 8),
-        device: device
+    let nCandindatesPerPosition = 8
+    let collisionCandidatesBuffer = device.typedBuffer(
+         values: Array(repeating: UInt32.max, count: positions.count * nCandindatesPerPosition)
     )
 
     // Create command buffer
@@ -83,22 +82,22 @@ do {
         connectedVertices: nil
     )
 
-    // Commit and wait for completion
-    commandBuffer.commit()
-    commandBuffer.waitUntilCompleted()
-
-    // Process collision candidates
-    if let collisionCandidates = collisionCandidatesBuffer.values {
-        for i in 0..<positions.count {
-            print("Collision candidates for vertex \(i):")
-            for j in 0..<8 {
-                let candidate = collisionCandidates[i * 8 + j]
-                if candidate != UInt32.max {
-                    print("  - Vertex \(candidate)")
+        commandBuffer.addCompletedHandler { _ in 
+        // Process collision candidates
+        if let collisionCandidates = collisionCandidatesBuffer.values {
+            for i in 0 ..< positions.count {
+                print("Collision candidates for vertex \(i):")
+                for j in 0 ..< nCandindatesPerPosition {
+                    let candidate = collisionCandidates[i * nCandindatesPerPosition + j]
+                    if candidate != UInt32.max {
+                        print("  - Vertex \(candidate)")
+                    }
                 }
             }
         }
     }
+    
+    commandBuffer.commit()
 } catch {
     print("An error occurred: \(error)")
 }

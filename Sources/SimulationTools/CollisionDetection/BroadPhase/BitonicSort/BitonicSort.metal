@@ -3,8 +3,8 @@ using namespace metal;
 
 #define SORT(F,L,R) {           \
     const auto v = sort(F,L,R); \
-    (L) = uint2(v.x, v.y);                  \
-    (R) = uint2(v.z, v.w);                  \
+    (L) = uint2(v.x, v.y);      \
+    (R) = uint2(v.z, v.w);      \
 }                               \
 
 static constexpr int genLeftIndex(const uint position,

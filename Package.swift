@@ -13,8 +13,8 @@ let package = Package(
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
-            name: "simulation-tools",
-            targets: ["simulation-tools"]
+            name: "SimulationTools",
+            targets: ["SimulationTools"]
         ),
     ],
     dependencies: [
@@ -25,7 +25,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "simulation-tools",
+            name: "SimulationTools",
             dependencies: [
                 .product(name: "MetalComputeTools", package: "metal-tools")
             ],
