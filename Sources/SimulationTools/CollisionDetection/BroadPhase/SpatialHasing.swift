@@ -17,6 +17,8 @@ public final class SpatialHashing {
         }
     }
 
+    public let configuration: Configuration
+
     private let computeVertexHashAndIndexState: MTLComputePipelineState
     private let computeCellBoundariesState: MTLComputePipelineState
     private let findCollisionCandidatesState: MTLComputePipelineState
@@ -31,9 +33,7 @@ public final class SpatialHashing {
     private let cellStart: MTLBuffer
     private let cellEnd: MTLBuffer
     private let hashTable: (buffer: MTLBuffer, paddedCount: Int)
-    
     private let hashTableCapacity: Int
-    public let configuration: Configuration
 
     /// Initializes a new `SpatialHashing` instance.
     ///
@@ -57,7 +57,7 @@ public final class SpatialHashing {
     /// Initializes a new `SpatialHashing` instance.
     ///
     /// - Parameters:
-    ///   - device: The Metal device  for resource allocation.
+    ///   - device: The Metal device for resource allocation.
     ///   - configuration: The configuration for spatial hashing.
     ///   - positions: An array of vertex positions.
     /// - Throws: An error if the Metal library or pipeline states cannot be created.

@@ -1,6 +1,6 @@
 import MetalTools
 
-public final class MTLBufferAllocator {
+final class MTLBufferAllocator {
     enum `Type` {
         case device(MTLDevice)
         case heap(MTLHeap)
@@ -12,8 +12,6 @@ public final class MTLBufferAllocator {
         case let .heap(heap): return heap.device
         }
     }
-
-    lazy var syncQueue: MTLCommandQueue? = device.makeCommandQueue()
 
     private let type: `Type`
 

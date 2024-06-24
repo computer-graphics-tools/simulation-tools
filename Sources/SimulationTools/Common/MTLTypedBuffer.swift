@@ -7,7 +7,7 @@ public class MTLTypedBuffer<Value> {
         return buffer.array(of: Value.self, count: count)
     }
     
-    public init(
+    init(
         count: Int,
         options: MTLResourceOptions = .cpuCacheModeWriteCombined,
         bufferAllocator: MTLBufferAllocator
@@ -16,7 +16,7 @@ public class MTLTypedBuffer<Value> {
         buffer = try bufferAllocator.buffer(for: Value.self, count: count, options: options)
     }
     
-    public init(
+    init(
         values: [Value],
         options: MTLResourceOptions = .cpuCacheModeWriteCombined,
         bufferAllocator: MTLBufferAllocator
