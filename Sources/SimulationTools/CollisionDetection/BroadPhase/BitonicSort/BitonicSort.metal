@@ -3,24 +3,25 @@ using namespace metal;
 
 #include "../../../Common/Definitions.h"
 
-
 #define SORT(F,L,R) {           \
     const auto v = sort(F,L,R); \
     (L) = uint2(v.x, v.y);      \
     (R) = uint2(v.z, v.w);      \
 }                               \
 
-static constexpr int genLeftIndex(const uint position,
-                                  const uint blockSize
+static constexpr int genLeftIndex(
+    const uint position,
+    const uint blockSize
 ) {
     const uint32_t blockMask = blockSize - 1;
     const auto no = position & blockMask; // comparator No. in block
     return ((position & ~blockMask) << 1) | no;
 }
 
-static uint4 sort(const bool reverse,
-                  uint2 left,
-                  uint2 right
+static uint4 sort(
+    const bool reverse,
+    uint2 left,
+    uint2 right
 ) {
     const bool lt = left.x < right.x;
     const bool swap = !lt ^ reverse;
@@ -31,34 +32,37 @@ static uint4 sort(const bool reverse,
     return v;
 }
 
-static void loadShared(const uint threadGroupSize,
-                       const uint indexInThreadgroup,
-                       const uint position,
-                       device uint2* data,
-                       threadgroup uint2* shared
+static void loadShared(
+    const uint threadGroupSize,
+    const uint indexInThreadgroup,
+    const uint position,
+    device uint2* data,
+    threadgroup uint2* shared
 ) {
     const auto index = genLeftIndex(position, threadGroupSize);
     shared[indexInThreadgroup] = data[index];
     shared[indexInThreadgroup | threadGroupSize] = data[index | threadGroupSize];
 }
 
-static void storeShared(const uint threadGroupSize,
-                        const uint indexInThreadgroup,
-                        const uint position,
-                        device uint2* data,
-                        threadgroup uint2* shared
+static void storeShared(
+    const uint threadGroupSize,
+    const uint indexInThreadgroup,
+    const uint position,
+    device uint2* data,
+    threadgroup uint2* shared
 ) {
     const auto index = genLeftIndex(position, threadGroupSize);
     data[index] = shared[indexInThreadgroup];
     data[index | threadGroupSize] = shared[indexInThreadgroup | threadGroupSize];
 }
 
-kernel void bitonicSortFirstPass(device uint2* data [[ buffer(0) ]],
-                                 constant uint& gridSize [[ buffer(1) ]],
-                                 threadgroup uint2* shared [[ threadgroup(0) ]],
-                                 const uint threadgroupSize [[ threads_per_threadgroup ]],
-                                 const uint indexInThreadgroup [[ thread_index_in_threadgroup ]],
-                                 const uint position [[ thread_position_in_grid ]]
+kernel void bitonicSortFirstPass(
+    device uint2* data [[ buffer(0) ]],
+    constant uint& gridSize [[ buffer(1) ]],
+    threadgroup uint2* shared [[ threadgroup(0) ]],
+    const uint threadgroupSize [[ threads_per_threadgroup ]],
+    const uint indexInThreadgroup [[ thread_index_in_threadgroup ]],
+    const uint position [[ thread_position_in_grid ]]
 ) {
     if (deviceDoesntSupportNonuniformThreadgroups && position >= gridSize) { return; }
     loadShared(threadgroupSize, indexInThreadgroup, position, data, shared);
@@ -74,10 +78,11 @@ kernel void bitonicSortFirstPass(device uint2* data [[ buffer(0) ]],
     storeShared(threadgroupSize, indexInThreadgroup, position, data, shared);
 }
 
-kernel void bitonicSortGeneralPass(device uint2* data [[ buffer(0) ]],
-                                   constant uint& gridSize [[ buffer(1) ]],
-                                   constant uint2& params [[ buffer(2) ]],
-                                   const uint position [[ thread_position_in_grid ]]
+kernel void bitonicSortGeneralPass(
+    device uint2* data [[ buffer(0) ]],
+    constant uint& gridSize [[ buffer(1) ]],
+    constant uint2& params [[ buffer(2) ]],
+    const uint position [[ thread_position_in_grid ]]
 ) {
     if (deviceDoesntSupportNonuniformThreadgroups && position >= gridSize) { return; }
     const bool reverse = (position & (params.x >> 1)) != 0; // to toggle direction
@@ -86,13 +91,14 @@ kernel void bitonicSortGeneralPass(device uint2* data [[ buffer(0) ]],
     SORT(reverse, data[left], data[left | blockSize]);
 }
 
-kernel void bitonicSortFinalPass(device uint2* data,
-                                 constant uint& gridSize [[ buffer(1) ]],
-                                 constant uint2& params [[ buffer(2) ]],
-                                 threadgroup uint2* shared [[ threadgroup(0) ]],
-                                 const uint threadgroupSize [[ threads_per_threadgroup ]],
-                                 const uint indexInThreadgroup [[ thread_index_in_threadgroup ]],
-                                 const uint position [[ thread_position_in_grid ]]
+kernel void bitonicSortFinalPass(
+    device uint2* data,
+    constant uint& gridSize [[ buffer(1) ]],
+    constant uint2& params [[ buffer(2) ]],
+    threadgroup uint2* shared [[ threadgroup(0) ]],
+    const uint threadgroupSize [[ threads_per_threadgroup ]],
+    const uint indexInThreadgroup [[ thread_index_in_threadgroup ]],
+    const uint position [[ thread_position_in_grid ]]
 ) {
     if (deviceDoesntSupportNonuniformThreadgroups && position >= gridSize) { return; }
     loadShared(threadgroupSize, indexInThreadgroup, position, data, shared);
