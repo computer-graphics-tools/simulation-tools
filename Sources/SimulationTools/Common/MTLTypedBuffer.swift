@@ -9,22 +9,20 @@ public class MTLTypedBuffer<Value> {
     
     public init(
         count: Int,
-        options: MTLResourceOptions = [.storageModeShared],
-        device: MTLDevice,
-        heap: MTLHeap? = nil
+        options: MTLResourceOptions = .cpuCacheModeWriteCombined,
+        bufferAllocator: MTLBufferAllocator
     ) throws {
         self.count = count
-        buffer = try (heap?.buffer(for: Value.self, count: count, options: options) ?? device.buffer(for: Value.self, count: count, options: options))
+        buffer = try bufferAllocator.buffer(for: Value.self, count: count, options: options)
     }
     
     public init(
         values: [Value],
-        options: MTLResourceOptions = [.storageModeShared],
-        device: MTLDevice,
-        heap: MTLHeap? = nil
+        options: MTLResourceOptions = .cpuCacheModeWriteCombined,
+        bufferAllocator: MTLBufferAllocator
     ) throws {
         count = values.count
-        buffer = try (heap?.buffer(with: values) ?? device.buffer(with: values, options: options))
+        buffer = try bufferAllocator.buffer(with: values)
     }
     
     public func put(values: [Value]) throws {
@@ -33,11 +31,21 @@ public class MTLTypedBuffer<Value> {
 }
 
 public extension MTLDevice {
-    func typedBuffer<T>(with array: [T], heap: MTLHeap? = nil) throws -> MTLTypedBuffer<T> {
-        try MTLTypedBuffer(values: array, device: self, heap: heap)
+    func typedBuffer<T>(with array: [T], options: MTLResourceOptions = .cpuCacheModeWriteCombined) throws -> MTLTypedBuffer<T> {
+        try MTLTypedBuffer(values: array, bufferAllocator: .init(type: .device(self)))
     }
     
-    func typedBuffer<T>(for type: T.Type, count: Int, heap: MTLHeap? = nil) throws -> MTLTypedBuffer<T> {
-        try MTLTypedBuffer(count: count, device: self)
+    func typedBuffer<T>(for type: T.Type, count: Int) throws -> MTLTypedBuffer<T> {
+        try MTLTypedBuffer(count: count, bufferAllocator: .init(type: .device(self)))
+    }
+}
+
+public extension MTLHeap {
+    func typedBuffer<T>(with array: [T], options: MTLResourceOptions = .cpuCacheModeWriteCombined) throws -> MTLTypedBuffer<T> {
+        try MTLTypedBuffer(values: array, bufferAllocator: .init(type: .heap(self)))
+    }
+    
+    func typedBuffer<T>(for type: T.Type, count: Int) throws -> MTLTypedBuffer<T> {
+        try MTLTypedBuffer(count: count, bufferAllocator: .init(type: .heap(self)))
     }
 }

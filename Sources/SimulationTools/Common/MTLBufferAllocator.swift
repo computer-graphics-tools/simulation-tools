@@ -1,6 +1,6 @@
 import MetalTools
 
-final class MTLBufferAllocator {
+public final class MTLBufferAllocator {
     enum `Type` {
         case device(MTLDevice)
         case heap(MTLHeap)
