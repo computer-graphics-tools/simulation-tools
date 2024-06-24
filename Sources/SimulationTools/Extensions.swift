@@ -32,16 +32,3 @@ extension Collection {
     
     var isNotEmpty: Bool { !isEmpty }
 }
-
-extension MTLDevice {
-    func buffer<T>(with array: [T], heap: MTLHeap?) throws -> MTLBuffer {
-        let buffer = try buffer(for: T.self, count: array.count, heap: heap)
-        try buffer.put(array)
-        
-        return buffer
-    }
-
-    func buffer<T>(for type: T.Type, count: Int, heap: MTLHeap?) throws -> MTLBuffer {
-        return try (heap?.buffer(for: type, count: count, options: heap?.resourceOptions ?? []) ?? self.buffer(for: type, count: count))
-    }
-}

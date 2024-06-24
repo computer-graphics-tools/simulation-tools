@@ -34,22 +34,52 @@ public final class SpatialHashing {
     
     private let hashTableCapacity: Int
     public let configuration: Configuration
+
+    /// Initializes a new `SpatialHashing` instance.
+    ///
+    /// - Parameters:
+    ///   - heap: The Metal heap for resource allocation.
+    ///   - configuration: The configuration for spatial hashing.
+    ///   - positions: An array of vertex positions.
+    /// - Throws: An error if the Metal library or pipeline states cannot be created.
+    public convenience init(
+        heap: MTLHeap,
+        configuration: Configuration,
+        positions: [SIMD4<Float>]
+    ) throws {
+        try self.init(
+            bufferProvider: .init(device: heap.device, heap: heap),
+            configuration: configuration,
+            positions: positions
+        )
+    }
     
     /// Initializes a new `SpatialHashing` instance.
     ///
     /// - Parameters:
-    ///   - device: The Metal device.
+    ///   - device: The Metal device  for resource allocation.
     ///   - configuration: The configuration for spatial hashing.
     ///   - positions: An array of vertex positions.
-    ///   - heap: The Metal heap for resource allocation.
     /// - Throws: An error if the Metal library or pipeline states cannot be created.
-    public init(
+    public convenience init(
         device: MTLDevice,
         configuration: Configuration,
-        positions: [SIMD4<Float>],
-        heap: MTLHeap?
+        positions: [SIMD4<Float>]
     ) throws {
-        let library = try device.makeDefaultLibrary(bundle: .module)
+        try self.init(
+            bufferProvider: .init(device: device),
+            configuration: configuration,
+            positions: positions
+        )
+    }
+
+    private init(
+        bufferProvider: MTLBufferProvider,
+        configuration: Configuration,
+        positions: [SIMD4<Float>],
+        heap: MTLHeap? = nil
+    ) throws {
+        let library = try bufferProvider.device.makeDefaultLibrary(bundle: .module)
         let deviceSupportsNonuniformThreadgroups = library.device
             .supports(feature: .nonUniformThreadgroups)
 
@@ -83,11 +113,11 @@ public final class SpatialHashing {
         self.bitonicSort = try .init(library: library)
         
         self.hashTableCapacity = vertexCount * 2
-        self.hashTable = try BitonicSort.buffer(count: vertexCount, device: device, heap: heap)
-        self.cellStart = try device.buffer(for: UInt32.self, count: self.hashTableCapacity, heap: heap)
-        self.cellEnd = try device.buffer(for: UInt32.self, count: self.hashTableCapacity, heap: heap)
-        self.halfPositions = try device.buffer(for: SIMD4<Float16>.self, count: vertexCount, heap: heap)
-        self.sortedHalfPositions = try device.buffer(for: SIMD4<Float16>.self, count: vertexCount, heap: heap)
+        self.hashTable = try BitonicSort.buffer(count: vertexCount, bufferProvider: bufferProvider)
+        self.cellStart = try bufferProvider.buffer(for: UInt32.self, count: self.hashTableCapacity)
+        self.cellEnd = try bufferProvider.buffer(for: UInt32.self, count: self.hashTableCapacity)
+        self.halfPositions = try bufferProvider.buffer(for: SIMD4<Float16>.self, count: vertexCount)
+        self.sortedHalfPositions = try bufferProvider.buffer(for: SIMD4<Float16>.self, count: vertexCount)
     }
     
     /// Builds the spatial hash and collision pairs for the given positions.
@@ -122,6 +152,7 @@ public final class SpatialHashing {
         self.bitonicSort.encode(data: self.hashTable.buffer, count: self.hashTable.paddedCount, in: commandBuffer)
         commandBuffer.popDebugGroup()
         
+        commandBuffer.pushDebugGroup("Compute Cell Bounds & Find Collision Candidates")
         commandBuffer.compute { encoder in
             encoder.setBuffer(self.halfPositions, offset: 0, index: 0)
             encoder.setBuffer(self.sortedHalfPositions, offset: 0, index: 1)
@@ -154,6 +185,7 @@ public final class SpatialHashing {
 
             encoder.dispatch1d(state: self.findCollisionCandidatesState, exactlyOrCovering: positions.count)
         }
+        commandBuffer.popDebugGroup()
     }
 }
 

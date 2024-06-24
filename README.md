@@ -55,8 +55,7 @@ do {
     let spatialHashing = try SpatialHashing(
         device: device,
         configuration: config,
-        positions: positions,
-        heap: nil
+        positions: positions
     )
 
     // Create buffers

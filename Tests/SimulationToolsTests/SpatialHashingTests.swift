@@ -35,8 +35,7 @@ final class SpatialHashingTests: XCTestCase {
             try SpatialHashing(
                 device: self.device,
                 configuration: config,
-                positions: positions,
-                heap: nil
+                positions: positions
             )
         )
     }
@@ -58,8 +57,7 @@ final class SpatialHashingTests: XCTestCase {
         let spatialHashing = try SpatialHashing(
             device: self.device,
             configuration: config,
-            positions: positions,
-            heap: nil
+            positions: positions
         )
         
         let positionsBuffer = try device.typedBuffer(with: positions)
@@ -176,8 +174,7 @@ final class SpatialHashingTests: XCTestCase {
         let spatialHashing = try SpatialHashing(
             device: self.device,
             configuration: config,
-            positions: positions,
-            heap: nil
+            positions: positions
         )
         
         let positionsBuffer = try device.typedBuffer(with: positions)
@@ -250,10 +247,9 @@ final class SpatialHashingTests: XCTestCase {
         do {
             let heap = try self.device.heap(size: SpatialHashing.totalBuffersSize(positionsCount: count), storageMode: .shared)
             let spatialHashing = try SpatialHashing(
-                device: self.device,
+                heap: heap,
                 configuration: config,
-                positions: positions,
-                heap: heap
+                positions: positions
             )
             
             let candidatesCount = 8
