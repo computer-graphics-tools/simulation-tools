@@ -97,9 +97,9 @@ public final class SpatialHashing {
     ///   - collisionCandidates: The buffer to store collision pairs.
     ///   - connectedVertices: The buffer containing vertex neighborhood information.
     public func build(
-        positions: TypedMTLBuffer<SIMD4<Float>>,
-        collisionCandidates: TypedMTLBuffer<UInt32>,
-        connectedVertices: TypedMTLBuffer<UInt32>?
+        positions: MTLTypedBuffer<SIMD4<Float>>,
+        collisionCandidates: MTLTypedBuffer<UInt32>,
+        connectedVertices: MTLTypedBuffer<UInt32>?,
         in commandBuffer: MTLCommandBuffer
     ) {
         commandBuffer.pushDebugGroup("Convert To Half Precision & Compute Vertex Hash And Index")

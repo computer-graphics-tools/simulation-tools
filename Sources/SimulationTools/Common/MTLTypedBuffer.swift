@@ -1,6 +1,6 @@
 import MetalTools
 
-public class TypedMTLBuffer<Value> {
+public class MTLTypedBuffer<Value> {
     public let buffer: MTLBuffer
     public let count: Int
     public var values: [Value]? {
@@ -29,5 +29,15 @@ public class TypedMTLBuffer<Value> {
     
     public func put(values: [Value]) throws {
         try buffer.put(values)
+    }
+}
+
+public extension MTLDevice {
+    func typedBuffer<T>(with array: [T], heap: MTLHeap? = nil) throws -> MTLTypedBuffer<T> {
+        try MTLTypedBuffer(values: array, device: self, heap: heap)
+    }
+    
+    func typedBuffer<T>(for type: T.Type, count: Int, heap: MTLHeap? = nil) throws -> MTLTypedBuffer<T> {
+        try MTLTypedBuffer(count: count, device: self)
     }
 }

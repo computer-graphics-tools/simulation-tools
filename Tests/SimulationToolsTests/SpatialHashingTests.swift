@@ -28,7 +28,7 @@ final class SpatialHashingTests: XCTestCase {
         let config = SpatialHashing.Configuration(
             cellSize: 1.0,
             spacingScale: 1.0,
-            collisionType: .vertexVertex
+            collisionType: .vertexToVertex
         )
         
         XCTAssertNoThrow(
@@ -48,11 +48,11 @@ final class SpatialHashingTests: XCTestCase {
         }
     }
     
-    func collisionCandidates(positions: [SIMD4<Float>], candidatesCount: Int = 8, cellSize: Float) throws -> TypedMTLBuffer<UInt32> {
+    func collisionCandidates(positions: [SIMD4<Float>], candidatesCount: Int = 8, cellSize: Float) throws -> MTLTypedBuffer<UInt32> {
         let config = SpatialHashing.Configuration(
             cellSize: cellSize,
             spacingScale: 1.0,
-            collisionType: .vertexVertex
+            collisionType: .vertexToVertex
         )
         
         let spatialHashing = try SpatialHashing(
@@ -73,10 +73,10 @@ final class SpatialHashingTests: XCTestCase {
         }
         
         spatialHashing.build(
-            commandBuffer: commandBuffer,
             positions: positionsBuffer,
             collisionCandidates: collisionCandidatesBuffer,
-            connectedVertices: nil
+            connectedVertices: nil,
+            in: commandBuffer
         )
         
         commandBuffer.commit()
@@ -170,7 +170,7 @@ final class SpatialHashingTests: XCTestCase {
         let config = SpatialHashing.Configuration(
             cellSize: cellSize,
             spacingScale: 1.0,
-            collisionType: .vertexVertex
+            collisionType: .vertexToVertex
         )
         
         let spatialHashing = try SpatialHashing(
@@ -200,10 +200,10 @@ final class SpatialHashingTests: XCTestCase {
         }
         
         spatialHashing.build(
-            commandBuffer: commandBuffer,
             positions: positionsBuffer,
             collisionCandidates: collisionCandidatesBuffer,
-            connectedVertices: connectedVerticesBuffer
+            connectedVertices: connectedVerticesBuffer,
+            in: commandBuffer
         )
         
         commandBuffer.commit()
@@ -244,7 +244,7 @@ final class SpatialHashingTests: XCTestCase {
         let config = SpatialHashing.Configuration(
             cellSize: 1.0,
             spacingScale: 1.0,
-            collisionType: .vertexVertex
+            collisionType: .vertexToVertex
         )
         
         do {
@@ -269,10 +269,10 @@ final class SpatialHashingTests: XCTestCase {
                 }
 
                 spatialHashing.build(
-                    commandBuffer: commandBuffer,
                     positions: positionsBuffer,
                     collisionCandidates: collisionCandidatesBuffer,
-                    connectedVertices: nil
+                    connectedVertices: nil,
+                    in: commandBuffer
                 )
                 
                 let startTime = CFAbsoluteTimeGetCurrent()

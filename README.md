@@ -26,9 +26,6 @@ Spatial hashing is a technique used to divide space into a grid to quickly locat
 Here's a basic example of how to use the SpatialHashing class:
 
 ```swift
-import Metal
-import SimulationTools
-
 // Initialize Metal device
 guard let device = MTLCreateSystemDefaultDevice()
 else { fatalError("Metal is not supported on this device") }
@@ -50,7 +47,7 @@ let positions: [SIMD4<Float>] = [
 let config = SpatialHashing.Configuration(
     cellSize: 1.0,
     spacingScale: 1.0,
-    collisionType: .vertexVertex
+    collisionType: .vertexToVertex
 )
 
 do {
@@ -66,7 +63,7 @@ do {
     let positionsBuffer = try device.typedBuffer(with: positions)
     let nCandindatesPerPosition = 8
     let collisionCandidatesBuffer = try device.typedBuffer(
-         with: Array(repeating: UInt32.max, count: positions.count * nCandindatesPerPosition)
+        with: Array(repeating: UInt32.max, count: positions.count * nCandindatesPerPosition)
     )
 
     // Create command buffer
@@ -76,13 +73,13 @@ do {
 
     // Build spatial hash and find collision candidates
     spatialHashing.build(
-        commandBuffer: commandBuffer,
         positions: positionsBuffer,
         collisionCandidates: collisionCandidatesBuffer,
-        connectedVertices: nil
+        connectedVertices: nil,
+        in: commandBuffer
     )
 
-        commandBuffer.addCompletedHandler { _ in
+    commandBuffer.addCompletedHandler { _ in
         // Process collision candidates
         if let collisionCandidates = collisionCandidatesBuffer.values {
             for i in 0 ..< positions.count {
@@ -96,7 +93,7 @@ do {
             }
         }
     }
-    
+
     commandBuffer.commit()
 } catch {
     print("An error occurred: \(error)")
