@@ -6,8 +6,8 @@ kernel void convertToHalfPrecisionPositions(
    constant float4 *positions [[ buffer(0) ]],
    device half4 *outPositions [[ buffer(1) ]],
    constant uint& gridSize [[ buffer(2) ]],
-   uint gid [[thread_position_in_grid]])
-{
+   uint gid [[thread_position_in_grid]]
+) {
     if (!deviceSupportsNonuniformThreadgroups && gid >= gridSize) { return; }
     outPositions[gid] = half4(positions[gid]);
 }
@@ -19,7 +19,7 @@ kernel void reorderHalfPrecisionPositions(
    constant uint& gridSize [[ buffer(3) ]],
    uint gid [[thread_position_in_grid]])
 {
-    if (!deviceSupportsNonuniformThreadgroups && gid >= gridSize) { return; }
+    if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
     uint2 hashAndIndex = hashTable[gid];
     half3 position = half3(positions[hashAndIndex.y].xyz);
     outPositions[gid] = half4(position, 1.0);

@@ -6,7 +6,11 @@ public final class SpatialHashing {
         let spacingScale: Float
         let collisionType: SelfCollisionType
         
-        public init(cellSize: Float, spacingScale: Float = 1, collisionType: SelfCollisionType) {
+        public init(
+            cellSize: Float32,
+            spacingScale: Float32 = 1,
+            collisionType: SelfCollisionType = .vertexToVertex
+        ) {
             self.cellSize = cellSize
             self.spacingScale = spacingScale
             self.collisionType = collisionType
@@ -29,7 +33,7 @@ public final class SpatialHashing {
     private let hashTable: (buffer: MTLBuffer, paddedCount: Int)
     
     private let hashTableCapacity: Int
-    private let configuration: Configuration
+    public let configuration: Configuration
     
     /// Initializes a new `SpatialHashing` instance.
     ///
@@ -93,11 +97,12 @@ public final class SpatialHashing {
     ///   - collisionCandidates: The buffer to store collision pairs.
     ///   - connectedVertices: The buffer containing vertex neighborhood information.
     public func build(
-        commandBuffer: MTLCommandBuffer,
         positions: TypedMTLBuffer<SIMD4<Float>>,
         collisionCandidates: TypedMTLBuffer<UInt32>,
         connectedVertices: TypedMTLBuffer<UInt32>?
+        in commandBuffer: MTLCommandBuffer
     ) {
+        commandBuffer.pushDebugGroup("Convert To Half Precision & Compute Vertex Hash And Index")
         commandBuffer.compute { encoder in
             encoder.setBuffer(positions.buffer, offset: 0, index: 0)
             encoder.setBuffer(self.halfPositions, offset: 0, index: 1)
@@ -111,9 +116,12 @@ public final class SpatialHashing {
             encoder.setValue(UInt32(positions.count), at: 4)
             encoder.dispatch1d(state: self.computeVertexHashAndIndexState, exactlyOrCovering: positions.count)
         }
-
+        commandBuffer.popDebugGroup()
+        
+        commandBuffer.pushDebugGroup("Sort")
         self.bitonicSort.encode(data: self.hashTable.buffer, count: self.hashTable.paddedCount, in: commandBuffer)
-
+        commandBuffer.popDebugGroup()
+        
         commandBuffer.compute { encoder in
             encoder.setBuffer(self.halfPositions, offset: 0, index: 0)
             encoder.setBuffer(self.sortedHalfPositions, offset: 0, index: 1)
