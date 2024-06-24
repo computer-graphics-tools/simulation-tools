@@ -2,7 +2,7 @@
 
 ## Description
 
-SimulationTools is a set of GPU algorithms designed for various simulation tasks, currently focusing on spatial hashing for efficient collision detection.
+SimulationTools is a set of high-performance GPU algorithms using Metal for various simulation tasks in 3D.
 
 ## Algorithms
 
