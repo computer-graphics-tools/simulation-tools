@@ -77,19 +77,19 @@ final class BitonicSort {
     static func buffer(
         count: Int,
         options: MTLResourceOptions = .cpuCacheModeWriteCombined,
-        bufferProvider: MTLBufferProvider
+        bufferAllocator: MTLBufferAllocator
     ) throws -> (buffer: MTLBuffer, paddedCount: Int) {
         return try Self.buffer(
             count: count,
             paddingValue: SIMD2<UInt32>(UInt32.max, UInt32.max),
-            bufferProvider: bufferProvider
+            bufferAllocator: bufferAllocator
         )
     }
 
     private static func buffer<T>(
         count: Int,
         paddingValue: T,
-        bufferProvider: MTLBufferProvider
+        bufferAllocator: MTLBufferAllocator
     ) throws -> (buffer: MTLBuffer, paddedCount: Int) {
         let paddedCount = 1 << UInt(ceil(log2f(.init(count))))
         var count = count
@@ -97,7 +97,7 @@ final class BitonicSort {
             count += paddedCount - count
         }
         return try (
-            buffer: bufferProvider.buffer(for: T.self, count: count),
+            buffer: bufferAllocator.buffer(for: T.self, count: count),
             paddedCount: paddedCount
         )
     }

@@ -48,7 +48,7 @@ public final class SpatialHashing {
         positions: [SIMD4<Float>]
     ) throws {
         try self.init(
-            bufferProvider: .init(device: heap.device, heap: heap),
+            bufferAllocator: .init(type: .heap(heap)),
             configuration: configuration,
             positions: positions
         )
@@ -67,19 +67,19 @@ public final class SpatialHashing {
         positions: [SIMD4<Float>]
     ) throws {
         try self.init(
-            bufferProvider: .init(device: device),
+            bufferAllocator: .init(type: .device(device)),
             configuration: configuration,
             positions: positions
         )
     }
 
     private init(
-        bufferProvider: MTLBufferProvider,
+        bufferAllocator: MTLBufferAllocator,
         configuration: Configuration,
         positions: [SIMD4<Float>],
         heap: MTLHeap? = nil
     ) throws {
-        let library = try bufferProvider.device.makeDefaultLibrary(bundle: .module)
+        let library = try bufferAllocator.device.makeDefaultLibrary(bundle: .module)
         let deviceSupportsNonuniformThreadgroups = library.device
             .supports(feature: .nonUniformThreadgroups)
 
@@ -113,11 +113,11 @@ public final class SpatialHashing {
         self.bitonicSort = try .init(library: library)
         
         self.hashTableCapacity = vertexCount * 2
-        self.hashTable = try BitonicSort.buffer(count: vertexCount, bufferProvider: bufferProvider)
-        self.cellStart = try bufferProvider.buffer(for: UInt32.self, count: self.hashTableCapacity)
-        self.cellEnd = try bufferProvider.buffer(for: UInt32.self, count: self.hashTableCapacity)
-        self.halfPositions = try bufferProvider.buffer(for: SIMD4<Float16>.self, count: vertexCount)
-        self.sortedHalfPositions = try bufferProvider.buffer(for: SIMD4<Float16>.self, count: vertexCount)
+        self.hashTable = try BitonicSort.buffer(count: vertexCount, bufferAllocator: bufferAllocator)
+        self.cellStart = try bufferAllocator.buffer(for: UInt32.self, count: self.hashTableCapacity)
+        self.cellEnd = try bufferAllocator.buffer(for: UInt32.self, count: self.hashTableCapacity)
+        self.halfPositions = try bufferAllocator.buffer(for: SIMD4<Float16>.self, count: vertexCount)
+        self.sortedHalfPositions = try bufferAllocator.buffer(for: SIMD4<Float16>.self, count: vertexCount)
     }
     
     /// Builds the spatial hash and collision pairs for the given positions.
