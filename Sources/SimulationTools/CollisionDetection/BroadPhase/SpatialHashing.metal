@@ -1,7 +1,6 @@
 #include "../../Common/BroadPhaseCommon.h"
 #include "../../Common/Definitions.h"
 
-
 kernel void convertToHalfPrecisionPositions(
    constant float4 *positions [[ buffer(0) ]],
    device half4 *outPositions [[ buffer(1) ]],
