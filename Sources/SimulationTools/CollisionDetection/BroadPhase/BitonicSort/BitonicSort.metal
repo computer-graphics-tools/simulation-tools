@@ -11,7 +11,8 @@ using namespace metal;
 }                               \
 
 static constexpr int genLeftIndex(const uint position,
-                                  const uint blockSize) {
+                                  const uint blockSize
+) {
     const uint32_t blockMask = blockSize - 1;
     const auto no = position & blockMask; // comparator No. in block
     return ((position & ~blockMask) << 1) | no;
@@ -19,7 +20,8 @@ static constexpr int genLeftIndex(const uint position,
 
 static uint4 sort(const bool reverse,
                   uint2 left,
-                  uint2 right) {
+                  uint2 right
+) {
     const bool lt = left.x < right.x;
     const bool swap = !lt ^ reverse;
     const bool4 dir = bool4(swap, swap, !swap, !swap); // (lt, gte) or (gte, lt)
@@ -33,7 +35,8 @@ static void loadShared(const uint threadGroupSize,
                        const uint indexInThreadgroup,
                        const uint position,
                        device uint2* data,
-                       threadgroup uint2* shared) {
+                       threadgroup uint2* shared
+) {
     const auto index = genLeftIndex(position, threadGroupSize);
     shared[indexInThreadgroup] = data[index];
     shared[indexInThreadgroup | threadGroupSize] = data[index | threadGroupSize];
@@ -43,7 +46,8 @@ static void storeShared(const uint threadGroupSize,
                         const uint indexInThreadgroup,
                         const uint position,
                         device uint2* data,
-                        threadgroup uint2* shared) {
+                        threadgroup uint2* shared
+) {
     const auto index = genLeftIndex(position, threadGroupSize);
     data[index] = shared[indexInThreadgroup];
     data[index | threadGroupSize] = shared[indexInThreadgroup | threadGroupSize];
@@ -54,7 +58,8 @@ kernel void bitonicSortFirstPass(device uint2* data [[ buffer(0) ]],
                                  threadgroup uint2* shared [[ threadgroup(0) ]],
                                  const uint threadgroupSize [[ threads_per_threadgroup ]],
                                  const uint indexInThreadgroup [[ thread_index_in_threadgroup ]],
-                                 const uint position [[ thread_position_in_grid ]]) {
+                                 const uint position [[ thread_position_in_grid ]]
+) {
     if (deviceDoesntSupportNonuniformThreadgroups && position >= gridSize) { return; }
     loadShared(threadgroupSize, indexInThreadgroup, position, data, shared);
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -72,7 +77,8 @@ kernel void bitonicSortFirstPass(device uint2* data [[ buffer(0) ]],
 kernel void bitonicSortGeneralPass(device uint2* data [[ buffer(0) ]],
                                    constant uint& gridSize [[ buffer(1) ]],
                                    constant uint2& params [[ buffer(2) ]],
-                                   const uint position [[ thread_position_in_grid ]]) {
+                                   const uint position [[ thread_position_in_grid ]]
+) {
     if (deviceDoesntSupportNonuniformThreadgroups && position >= gridSize) { return; }
     const bool reverse = (position & (params.x >> 1)) != 0; // to toggle direction
     const uint blockSize = params.y; // size of comparison sets
@@ -86,7 +92,8 @@ kernel void bitonicSortFinalPass(device uint2* data,
                                  threadgroup uint2* shared [[ threadgroup(0) ]],
                                  const uint threadgroupSize [[ threads_per_threadgroup ]],
                                  const uint indexInThreadgroup [[ thread_index_in_threadgroup ]],
-                                 const uint position [[ thread_position_in_grid ]]) {
+                                 const uint position [[ thread_position_in_grid ]]
+) {
     if (deviceDoesntSupportNonuniformThreadgroups && position >= gridSize) { return; }
     loadShared(threadgroupSize, indexInThreadgroup, position, data, shared);
     const auto unitSize = params.x;

@@ -17,8 +17,8 @@ kernel void reorderHalfPrecisionPositions(
    device half4 *outPositions [[ buffer(1) ]],
    constant uint2* hashTable [[ buffer(2) ]],
    constant uint& gridSize [[ buffer(3) ]],
-   uint gid [[thread_position_in_grid]])
-{
+   uint gid [[thread_position_in_grid]]
+) {
     if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
     uint2 hashAndIndex = hashTable[gid];
     half3 position = half3(positions[hashAndIndex.y].xyz);
@@ -31,8 +31,8 @@ kernel void computeVertexHashAndIndex(
     constant uint& hashTableCapacity [[ buffer(2) ]],
     constant float& cellSize [[ buffer(3) ]],
     constant uint& gridSize [[ buffer(4) ]],
-    uint gid [[ thread_position_in_grid ]])
-{
+    uint gid [[ thread_position_in_grid ]]
+) {
     if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
     float3 position = float3(positions[gid].xyz);
     uint hash = getHash(hashCoord(position, cellSize), hashTableCapacity);
@@ -46,8 +46,8 @@ kernel void computeCellBoundaries(
     constant uint& gridSize [[ buffer(3) ]],
     uint gid [[ thread_position_in_grid ]],
     uint threadIdx [[ thread_position_in_threadgroup ]],
-    threadgroup uint* sharedHash [[ threadgroup(0) ]])
-{
+    threadgroup uint* sharedHash [[ threadgroup(0) ]]
+) {
     if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
     uint2 hashIndex = hashTable[gid];
     uint hash = hashIndex.x;
@@ -83,8 +83,8 @@ kernel void findCollisionCandidates(
     constant uint& maxCollisionCandidatesCount [[ buffer(9) ]],
     constant uint& connectedVerticesCount [[ buffer(10) ]],
     constant uint& gridSize [[ buffer(11) ]],
-    uint gid [[ thread_position_in_grid ]])
-{
+    uint gid [[ thread_position_in_grid ]]
+) {
     if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
     uint index = hashTable[gid].y;
     if (index == UINT_MAX) { return; }
