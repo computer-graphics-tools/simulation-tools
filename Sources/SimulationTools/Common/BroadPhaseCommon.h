@@ -39,26 +39,31 @@ struct SortedCollisionCandidates {
 };
 
 METAL_FUNC void initializeCollisionCandidates(
-    device uint* collisionPairs,
+    device uint* candidates,
     constant const half4* positions,
+    thread SortedCollisionCandidates &sortedCandidates,
     uint index,
-    thread SortedCollisionCandidates &collisionCandidates,
     float3 position,
     uint count
 ) {
     for (int i = 0; i < int(count); i++) {
-        uint colliderIndex = collisionPairs[index * count + i];
-        collisionCandidates.candidates[i].index = colliderIndex;
+        uint colliderIndex = candidates[index * count + i];
+        sortedCandidates.candidates[i].index = colliderIndex;
         if (colliderIndex != UINT_MAX) {
             float3 collider = float3(positions[colliderIndex].xyz);
-            collisionCandidates.candidates[i].distance = length_squared(position - collider);
+            sortedCandidates.candidates[i].distance = length_squared(position - collider);
         } else {
-            collisionCandidates.candidates[i].distance = FLT_MAX;
+            sortedCandidates.candidates[i].distance = FLT_MAX;
         }
     }
 }
 
-METAL_FUNC void insertSeed(thread SortedCollisionCandidates &candidates, uint index, float distance, uint count) {
+METAL_FUNC void insertSeed(
+    thread SortedCollisionCandidates &candidates,
+    uint index,
+    float distance,
+    uint count
+) {
     int insertPosition = -1;
     int duplicateIndex = -1;
 

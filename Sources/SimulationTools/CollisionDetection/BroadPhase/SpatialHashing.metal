@@ -110,8 +110,8 @@ kernel void findCollisionCandidates(
     initializeCollisionCandidates(
         collisionCandidates,
         sortedPositions,
-        index,
         sortedCollisionCandidates,
+        index,
         position,
         maxCollisionCandidatesCount
       );
