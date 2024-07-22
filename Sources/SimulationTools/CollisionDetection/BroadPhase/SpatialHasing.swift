@@ -148,7 +148,7 @@ public final class SpatialHashing {
         }
         commandBuffer.popDebugGroup()
         
-        commandBuffer.pushDebugGroup("Sort")
+        commandBuffer.pushDebugGroup("Sort Hash Table")
         self.bitonicSort.encode(data: self.hashTable.buffer, count: self.hashTable.paddedCount, in: commandBuffer)
         commandBuffer.popDebugGroup()
         
