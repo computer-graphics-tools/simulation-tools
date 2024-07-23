@@ -25,6 +25,14 @@ public class MTLTypedBuffer<Value> {
         buffer = try bufferAllocator.buffer(with: values)
     }
     
+    init(
+        buffer: MTLBuffer,
+        count: Int
+    ) throws {
+        self.count = count
+        self.buffer = buffer
+    }
+    
     public func put(values: [Value]) throws {
         try buffer.put(values)
     }
@@ -38,6 +46,10 @@ public extension MTLDevice {
     func typedBuffer<T>(for type: T.Type, count: Int) throws -> MTLTypedBuffer<T> {
         try MTLTypedBuffer(count: count, bufferAllocator: .init(type: .device(self)))
     }
+    
+    func typedBuffer<T>(with buffer: MTLBuffer, count: Int) throws -> MTLTypedBuffer<T> {
+        try MTLTypedBuffer(buffer: buffer, count: count)
+    }
 }
 
 public extension MTLHeap {
@@ -47,5 +59,9 @@ public extension MTLHeap {
     
     func typedBuffer<T>(for type: T.Type, count: Int) throws -> MTLTypedBuffer<T> {
         try MTLTypedBuffer(count: count, bufferAllocator: .init(type: .heap(self)))
+    }
+    
+    func typedBuffer<T>(with buffer: MTLBuffer, count: Int) throws -> MTLTypedBuffer<T> {
+        try MTLTypedBuffer(buffer: buffer, count: count)
     }
 }

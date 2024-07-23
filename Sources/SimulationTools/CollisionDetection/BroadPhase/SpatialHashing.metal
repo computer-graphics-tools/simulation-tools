@@ -141,6 +141,7 @@ kernel void findCollisionCandidates(
                     float distanceSq = length_squared(diff);
                     float errorSq = distanceSq - pow(proximity, 2.0);
                     if (errorSq >= 0.0) { continue; }
+                    if (distanceSq > sortedCollisionCandidates.candidates[maxCollisionCandidatesCount - 1].distance) { continue; }
 
                     insertSeed(sortedCollisionCandidates, collisionCandidate, distanceSq, maxCollisionCandidatesCount);
                 }

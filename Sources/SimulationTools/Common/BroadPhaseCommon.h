@@ -4,7 +4,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
-#define MAX_CONNECTED_VERTICES 32
+#include "DistanceFunctions.h"
+ #define MAX_CONNECTED_VERTICES 32
 
 METAL_FUNC int3 hashCoord(float3 position, float gridSpacing) {
     int x = floor(position.x / gridSpacing);
@@ -54,6 +55,27 @@ METAL_FUNC void initializeCollisionCandidates(
             sortedCandidates.candidates[i].distance = length_squared(position - collider);
         } else {
             sortedCandidates.candidates[i].distance = FLT_MAX;
+        }
+    }
+}
+
+void METAL_FUNC initializeTriangleCollisionCandidates(
+    device uint* candidates,
+    constant packed_float3* positions,
+    constant packed_uint3* triangles,
+    uint index,
+    float3 position,
+    thread SortedCollisionCandidates &collisionCandidates,
+    uint count
+) {
+    for (int i = 0; i < int(count); i++) {
+        uint colliderIndex = candidates[index * count + i];
+        collisionCandidates.candidates[i].index = colliderIndex;
+        if (index != UINT_MAX && colliderIndex != UINT_MAX) {
+            Triangle triangle = createTriangle(triangles[colliderIndex], positions);
+            collisionCandidates.candidates[i].distance = usdTriangle(position, triangle.a.xyz, triangle.b.xyz, triangle.c.xyz);
+        } else {
+            collisionCandidates.candidates[i].distance = FLT_MAX;
         }
     }
 }
