@@ -97,4 +97,9 @@ METAL_FUNC float3 closestPointTriangle(float3 p0, float3 p1, float3 p2, float3 p
     return b0 * p0 + b1 * p1 + b2 * p2;
 }
 
+METAL_FUNC float sdsBox(float3 p, float3 b) {
+    float3 q = abs(p) - b;
+  return length_squared(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+}
+
 #endif /* DistanceFunctions_h */

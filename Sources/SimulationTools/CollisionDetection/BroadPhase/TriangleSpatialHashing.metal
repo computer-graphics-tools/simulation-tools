@@ -64,9 +64,9 @@ kernel void findTriangleCandidates(
         maxCollisionCandidatesCount
     );
 
-    uint h = getHash(hashPosition, hashTableCapacity);
+    uint hash = getHash(hashPosition, hashTableCapacity);
     for (uint i = 0; i < BUCKET_SIZE; i++) {
-        uint triangleIndex = triangleHashTable[h * BUCKET_SIZE + i];
+        uint triangleIndex = triangleHashTable[hash * BUCKET_SIZE + i];
         if (triangleIndex == UINT_MAX) { continue; }
         uint3 triangle = triangles[triangleIndex];
         
@@ -83,14 +83,17 @@ kernel void findTriangleCandidates(
 }
 
 kernel void reuseTrianglesCache(
-    device uint* vertexNeighbors [[ buffer(0) ]],
+    constant uint* vertexNeighbors [[ buffer(0) ]],
     device uint* sceneCollisionCandidates [[ buffer(1) ]],
     constant float4* positions [[ buffer(2) ]],
     constant packed_float3* scenePositions [[ buffer(3) ]],
     constant packed_uint3 *sceneTriangles [[ buffer(4) ]],
-    constant uint& positionsCount [[ buffer(5) ]],
-    constant uint& maxCollisionCandidatesCount [[ buffer(6) ]],
-    constant uint& vertexNeighborsCount [[ buffer(7) ]],
+    constant uint3* triangleNeighbors [[ buffer(5) ]],
+    constant uint& positionsCount [[ buffer(6) ]],
+    constant uint& maxCollisionCandidatesCount [[ buffer(7) ]],
+    constant uint& vertexNeighborsCount [[ buffer(8) ]],
+    constant uint& trianglesCount [[ buffer(9) ]],
+    constant bool& enableTriangleReuse [[ buffer(10) ]],
     uint gid [[ thread_position_in_grid ]])
 {
     if (gid >= positionsCount) { return; }
@@ -110,14 +113,34 @@ kernel void reuseTrianglesCache(
     const int neighborsReuseCount = 4;
     for (int i = 0; i < min(neighborsReuseCount, int(vertexNeighborsCount)); i++) {
         uint neighborIndex = vertexNeighbors[gid * vertexNeighborsCount + i];
+        if (neighborIndex == UINT_MAX) { continue; }
         for (int j = 0; j < 1; j++) {
             uint triangleIndex = sceneCollisionCandidates[neighborIndex * maxCollisionCandidatesCount + j];
+            if (triangleIndex == UINT_MAX) { continue; }
             uint3 triangle = sceneTriangles[triangleIndex];
             Triangle trianglePositions = createTriangle(triangle, scenePositions);
             float distanceSQ = usdTriangle(vertexPosition, trianglePositions.a, trianglePositions.b, trianglePositions.c);
             if (distanceSQ > sortedCollisionCandidates.candidates[maxCollisionCandidatesCount - 1].distance) { continue; }
             
             insertSeed(sortedCollisionCandidates, triangleIndex, distanceSQ, maxCollisionCandidatesCount);
+        }
+    }
+    
+    if (enableTriangleReuse) {
+        for (int j = 0; j < 1; j++) {
+            uint closestIndex = sceneCollisionCandidates[gid * maxCollisionCandidatesCount + j];
+            if (closestIndex == UINT_MAX) { continue; }
+            for (int i = 0; i < 3; i++) {
+                uint triangleIndex = triangleNeighbors[closestIndex][i];
+                if (triangleIndex == UINT_MAX) { continue; }
+                uint3 triangle = sceneTriangles[triangleIndex];
+                
+                Triangle trianglePositions = createTriangle(triangle, scenePositions);
+                float distanceSQ = usdTriangle(vertexPosition, trianglePositions.a, trianglePositions.b, trianglePositions.c);
+                if (distanceSQ > sortedCollisionCandidates.candidates[maxCollisionCandidatesCount - 1].distance) { continue; }
+                
+                insertSeed(sortedCollisionCandidates, triangleIndex, distanceSQ, maxCollisionCandidatesCount);
+            }
         }
     }
     

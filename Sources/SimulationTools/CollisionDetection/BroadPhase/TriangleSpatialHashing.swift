@@ -4,7 +4,7 @@ public final class TriangleSpatialHashing {
     public struct Configuration {
         let cellSize: Float
         
-        public init(cellSize: Float32) {
+        public init(cellSize: Float) {
             self.cellSize = cellSize
         }
     }
@@ -58,33 +58,33 @@ public final class TriangleSpatialHashing {
         self.triangleHashTableCounter = try bufferAllocator.buffer(for: UInt32.self, count: trianglesCount, options: .storageModePrivate)
     }
     
-    public func build<PositionType, TriangleType>(
-        positions: MTLTypedBuffer<SIMD4<Float>>,
-        scenePositions: MTLTypedBuffer<PositionType>,
-        sceneTriangles: MTLTypedBuffer<TriangleType>,
-        collisionCandidates: MTLTypedBuffer<UInt32>,
-        positionsCount: Int,
-        trianglesCount: Int,
+    public func build(
+        positions: MTLTypedBuffer,
+        scenePositions: MTLTypedBuffer,
+        sceneTriangles: MTLTypedBuffer,
+        collisionCandidates: MTLTypedBuffer,
+        rehash: Bool,
         in commandBuffer: MTLCommandBuffer
     ) {
-        commandBuffer.blit { encoder in
-            encoder.fill(buffer: triangleHashTableCounter, range: 0..<(MemoryLayout<UInt32>.stride * trianglesCount), value: 0)
+        if rehash {
+            commandBuffer.blit { encoder in
+                encoder.fill(buffer: triangleHashTableCounter, range: 0..<(MemoryLayout<UInt32>.stride * sceneTriangles.descriptor.count), value: 0)
+            }
+            
+            commandBuffer.pushDebugGroup("Hash Triangles")
+            commandBuffer.compute { encoder in
+                encoder.setBuffer(scenePositions.buffer, offset: 0, index: 0)
+                encoder.setBuffer(triangleHashTable, offset: 0, index: 1)
+                encoder.setBuffer(triangleHashTableCounter, offset: 0, index: 2)
+                encoder.setValue(configuration.cellSize, at: 3)
+                encoder.setBuffer(sceneTriangles.buffer, offset: 0, index: 4)
+                encoder.setValue(UInt32(sceneTriangles.descriptor.count), at: 5)
+                encoder.setValue(UInt32(counter), at: 6)
+                encoder.dispatch1d(state: hashTrianglesState, exactlyOrCovering: sceneTriangles.descriptor.count)
+            }
+            commandBuffer.popDebugGroup()
         }
 
-        commandBuffer.pushDebugGroup("Hash Triangles")
-        commandBuffer.compute { encoder in
-            encoder.setBuffer(scenePositions.buffer, offset: 0, index: 0)
-            encoder.setBuffer(triangleHashTable, offset: 0, index: 1)
-            encoder.setBuffer(triangleHashTableCounter, offset: 0, index: 2)
-            encoder.setValue(configuration.cellSize, at: 3)
-            encoder.setBuffer(sceneTriangles.buffer, offset: 0, index: 4)
-            encoder.setValue(UInt32(trianglesCount), at: 5)
-            encoder.setValue(UInt32(counter), at: 6)
-            encoder.dispatch1d(state: hashTrianglesState, exactlyOrCovering: trianglesCount)
-        }
-        commandBuffer.popDebugGroup()
-        
-        
         commandBuffer.pushDebugGroup("Find Collision Candidates")
         commandBuffer.compute { encoder in
             encoder.setBuffer(collisionCandidates.buffer, offset: 0, index: 0)
@@ -92,23 +92,24 @@ public final class TriangleSpatialHashing {
             encoder.setBuffer(scenePositions.buffer, offset: 0, index: 2)
             encoder.setBuffer(triangleHashTable, offset: 0, index: 3)
             encoder.setBuffer(sceneTriangles.buffer, offset: 0, index: 4)
-            encoder.setValue(UInt32(trianglesCount), at: 5)
+            encoder.setValue(UInt32(sceneTriangles.descriptor.count), at: 5)
             encoder.setValue(configuration.cellSize, at: 6)
-            encoder.setValue(UInt32(collisionCandidates.count / positions.count), at: 7)
-            encoder.setValue(UInt32(positionsCount), at: 8)
-            encoder.dispatch1d(state: findTriangleCandidatesState, exactlyOrCovering: positionsCount)
+            encoder.setValue(UInt32(collisionCandidates.descriptor.count / positions.descriptor.count), at: 7)
+            encoder.setValue(UInt32(positions.descriptor.count), at: 8)
+            encoder.dispatch1d(state: findTriangleCandidatesState, exactlyOrCovering: positions.descriptor.count)
         }
         commandBuffer.popDebugGroup()
         
         counter += 1
     }
     
-    public func reuse<PositionType, TriangleType>(
-        positions: MTLTypedBuffer<SIMD4<Float>>,
-        scenePositions: MTLTypedBuffer<PositionType>,
-        sceneTriangles: MTLTypedBuffer<TriangleType>,
-        collisionCandidates: MTLTypedBuffer<UInt32>,
-        vertexNeighbors: MTLTypedBuffer<UInt32>,
+    public func reuse(
+        positions: MTLTypedBuffer,
+        scenePositions: MTLTypedBuffer,
+        sceneTriangles: MTLTypedBuffer,
+        collisionCandidates: MTLTypedBuffer,
+        vertexNeighbors: MTLTypedBuffer,
+        trinagleNeighbors: MTLTypedBuffer? = nil,
         positionsCount: Int,
         in commandBuffer: MTLCommandBuffer
     ) {
@@ -119,9 +120,17 @@ public final class TriangleSpatialHashing {
             encoder.setBuffer(positions.buffer, offset: 0, index: 2)
             encoder.setBuffer(scenePositions.buffer, offset: 0, index: 3)
             encoder.setBuffer(sceneTriangles.buffer, offset: 0, index: 4)
-            encoder.setValue(UInt32(positionsCount), at: 5)
-            encoder.setValue(UInt32(collisionCandidates.count / positions.count), at: 6)
-            encoder.setValue(UInt32(vertexNeighbors.count / positions.count), at: 7)
+            if let trinagleNeighbors {
+                encoder.setBuffer(trinagleNeighbors.buffer, offset: 0, index: 5)
+                encoder.setValue(true, at: 10)
+            } else {
+                encoder.setValue(SIMD3(repeating: UInt32.max), at: 5)
+                encoder.setValue(false, at: 10)
+            }
+            encoder.setValue(UInt32(positionsCount), at: 6)
+            encoder.setValue(UInt32(collisionCandidates.descriptor.count / positions.descriptor.count), at: 7)
+            encoder.setValue(UInt32(vertexNeighbors.descriptor.count / positions.descriptor.count), at: 8)
+            encoder.setValue(UInt32(sceneTriangles.descriptor.count), at: 9)
 
             encoder.dispatch1d(state: reuseTrianglesCacheState, exactlyOrCovering: positionsCount)
         }

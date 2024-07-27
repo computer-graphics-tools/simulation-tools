@@ -6,6 +6,7 @@ using namespace metal;
 
 #include "DistanceFunctions.h"
  #define MAX_CONNECTED_VERTICES 32
+#define MAX_COLLISION_CANDIDATES 32
 
 METAL_FUNC int3 hashCoord(float3 position, float gridSpacing) {
     int x = floor(position.x / gridSpacing);
@@ -36,23 +37,26 @@ struct CollisionCandidate {
 };
 
 struct SortedCollisionCandidates {
-    CollisionCandidate candidates[MAX_CONNECTED_VERTICES];
+    CollisionCandidate candidates[MAX_COLLISION_CANDIDATES];
 };
 
-METAL_FUNC void initializeCollisionCandidates(
+
+template <typename T>
+enable_if_t<is_floating_point_v<T>, void>
+METAL_FUNC initializeCollisionCandidates(
     device uint* candidates,
-    constant const half4* positions,
+    constant const vec<T, 3>* positions,
     thread SortedCollisionCandidates &sortedCandidates,
     uint index,
-    float3 position,
+    const vec<T, 3> position,
     uint count
 ) {
     for (int i = 0; i < int(count); i++) {
         uint colliderIndex = candidates[index * count + i];
         sortedCandidates.candidates[i].index = colliderIndex;
         if (colliderIndex != UINT_MAX) {
-            float3 collider = float3(positions[colliderIndex].xyz);
-            sortedCandidates.candidates[i].distance = length_squared(position - collider);
+            vec<T, 3> collider = positions[colliderIndex].xyz;
+            sortedCandidates.candidates[i].distance = float(length_squared(position - collider));
         } else {
             sortedCandidates.candidates[i].distance = FLT_MAX;
         }
@@ -71,7 +75,7 @@ void METAL_FUNC initializeTriangleCollisionCandidates(
     for (int i = 0; i < int(count); i++) {
         uint colliderIndex = candidates[index * count + i];
         collisionCandidates.candidates[i].index = colliderIndex;
-        if (index != UINT_MAX && colliderIndex != UINT_MAX) {
+        if (colliderIndex != UINT_MAX) {
             Triangle triangle = createTriangle(triangles[colliderIndex], positions);
             collisionCandidates.candidates[i].distance = usdTriangle(position, triangle.a.xyz, triangle.b.xyz, triangle.c.xyz);
         } else {
@@ -80,10 +84,12 @@ void METAL_FUNC initializeTriangleCollisionCandidates(
     }
 }
 
-METAL_FUNC void insertSeed(
+template <typename T>
+enable_if_t<is_floating_point_v<T>, void>
+METAL_FUNC insertSeed(
     thread SortedCollisionCandidates &candidates,
     uint index,
-    float distance,
+    T distance,
     uint count
 ) {
     int insertPosition = -1;

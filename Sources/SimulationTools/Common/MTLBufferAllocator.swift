@@ -13,7 +13,7 @@ final class MTLBufferAllocator {
         }
     }
 
-    private let type: `Type`
+    let type: `Type`
 
     init(type: Type) {
         self.type = type
