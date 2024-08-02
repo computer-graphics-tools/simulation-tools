@@ -1,7 +1,6 @@
 #include "../../Common/BroadPhaseCommon.h"
 #include "../../Common/Definitions.h"
 
-#define BUCKET_SIZE 8
 
 kernel void hashTriangles(
     constant const packed_float3* positions [[ buffer(0) ]],
@@ -10,7 +9,8 @@ kernel void hashTriangles(
     constant float& cellSize [[ buffer(3) ]],
     constant packed_uint3* triangles [[ buffer(4) ]],
     constant uint& trianglesCount [[ buffer(5) ]],
-    constant uint& step [[ buffer(6) ]],
+    constant uint& bucketSize [[ buffer(6) ]],
+    constant uint& step [[ buffer(7) ]],
     uint id [[ thread_position_in_grid ]]
 ) {
     if (id >= trianglesCount) { return; }
@@ -29,8 +29,8 @@ kernel void hashTriangles(
             for (int z = minCell.z; z <= maxCell.z; z++) {
                 uint hash = getHash(int3(x, y, z), trianglesCount);
                 uint index = atomic_fetch_add_explicit(&hashTableCounter[hash], 1, memory_order_relaxed);
-                if (index < BUCKET_SIZE) {
-                    hashTable[hash * BUCKET_SIZE + index] = gid;
+                if (index < bucketSize) {
+                    hashTable[hash * bucketSize + index] = gid;
                 }
             }
         }
@@ -46,7 +46,8 @@ kernel void findTriangleCandidates(
     constant uint& hashTableCapacity [[ buffer(5) ]],
     constant float& cellSize [[ buffer(6) ]],
     constant uint& maxCollisionCandidatesCount [[ buffer(7) ]],
-    constant uint& gridSize [[ buffer(8) ]],
+    constant uint& bucketSize [[ buffer(8) ]],
+    constant uint& gridSize [[ buffer(9) ]],
     uint gid [[ thread_position_in_grid ]]
 ) {
     if (gid >= gridSize) { return; }
@@ -65,8 +66,8 @@ kernel void findTriangleCandidates(
     );
 
     uint hash = getHash(hashPosition, hashTableCapacity);
-    for (uint i = 0; i < BUCKET_SIZE; i++) {
-        uint triangleIndex = triangleHashTable[hash * BUCKET_SIZE + i];
+    for (uint i = 0; i < bucketSize; i++) {
+        uint triangleIndex = triangleHashTable[hash * bucketSize + i];
         if (triangleIndex == UINT_MAX) { continue; }
         uint3 triangle = triangles[triangleIndex];
         

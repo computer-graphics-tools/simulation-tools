@@ -8,6 +8,13 @@ using namespace metal;
  #define MAX_CONNECTED_VERTICES 32
 #define MAX_COLLISION_CANDIDATES 32
 
+struct Triangle {
+    float3 a;
+    float3 b;
+    float3 c;
+};
+
+
 METAL_FUNC int3 hashCoord(float3 position, float gridSpacing) {
     int x = floor(position.x / gridSpacing);
     int y = floor(position.y / gridSpacing);
@@ -39,6 +46,22 @@ struct CollisionCandidate {
 struct SortedCollisionCandidates {
     CollisionCandidate candidates[MAX_COLLISION_CANDIDATES];
 };
+
+METAL_FUNC Triangle createTriangle(uint3 triangleVertices, constant float3* positions) {
+    return Triangle {
+        positions[triangleVertices.x],
+        positions[triangleVertices.y],
+        positions[triangleVertices.z]
+    };
+}
+
+METAL_FUNC Triangle createTriangle(uint3 triangleVertices, constant packed_float3* positions) {
+    return Triangle {
+        positions[triangleVertices.x],
+        positions[triangleVertices.y],
+        positions[triangleVertices.z]
+    };
+}
 
 
 template <typename T>
@@ -115,5 +138,24 @@ METAL_FUNC insertSeed(
         candidates.candidates[insertPosition] = { .index = index, .distance = distance };
     }
 }
+
+template <typename T>
+static inline float3 getPosition(T element);
+
+template <>
+inline float3 getPosition(float3 element) {
+    return element;
+}
+
+template <>
+inline float3 getPosition(half3 element) {
+    return float3(element);
+}
+
+template <>
+inline float3 getPosition(packed_float3 element) {
+    return float3(element);
+}
+
 
 #endif /* BroadPhaseCommon_h */

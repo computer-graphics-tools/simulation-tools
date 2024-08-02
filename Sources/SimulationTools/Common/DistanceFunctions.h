@@ -1,20 +1,6 @@
 #ifndef DistanceFunctions_h
 #define DistanceFunctions_h
 
-struct Triangle {
-    float3 a;
-    float3 b;
-    float3 c;
-};
-
-METAL_FUNC Triangle createTriangle(uint3 triangleVertices, constant packed_float3 *positions) {
-    return Triangle {
-        .a = positions[triangleVertices.x],
-        .b = positions[triangleVertices.y],
-        .c = positions[triangleVertices.z]
-    };
-}
-
 template <typename T>
 enable_if_t<is_floating_point_v<T>, float>
 METAL_FUNC usdTriangle(vec<T, 3> p, vec<T, 3> a, vec<T, 3> b, vec<T, 3> c) {

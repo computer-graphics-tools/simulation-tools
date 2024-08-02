@@ -21,14 +21,15 @@ public final class SpatialHashing {
     private let reorderHalfPrecisionState: MTLComputePipelineState
     private let findCollisionCandidatesFloat3State: MTLComputePipelineState
     private let findCollisionCandidatesPackedFloat3State: MTLComputePipelineState
+    private let reuseCollisionCandidatesState: MTLComputePipelineState
     private let bitonicSort: BitonicSort
 
-    private let cellStart: MTLBuffer
-    private let cellEnd: MTLBuffer
+    let cellStart: MTLBuffer
+    let cellEnd: MTLBuffer
     let hashTable: (buffer: MTLBuffer, paddedCount: Int)
     let halfPositions: MTLBuffer
     let sortedHalfPositions: MTLTypedBuffer
-     let hashTableCapacity: Int
+    let hashTableCapacity: Int
 
     public convenience init(
         heap: MTLHeap,
@@ -73,6 +74,7 @@ public final class SpatialHashing {
         self.reorderHalfPrecisionState = try library.computePipelineState(function: "reorderHalfPrecision", constants: constantValues)
         self.findCollisionCandidatesFloat3State = try library.computePipelineState(function: "findCollisionCandidatesFloat3", constants: constantValues)
         self.findCollisionCandidatesPackedFloat3State = try library.computePipelineState(function: "findCollisionCandidatesPackedFloat3", constants: constantValues)
+        self.reuseCollisionCandidatesState = try library.computePipelineState(function: "reuseCollisionCandidates", constants: constantValues)
         self.bitonicSort = try .init(library: library)
         
         self.hashTableCapacity = maxElementsCount * 2
@@ -87,6 +89,9 @@ public final class SpatialHashing {
         elements: MTLTypedBuffer,
         in commandBuffer: MTLCommandBuffer
     ) {
+        commandBuffer.blit { encoder in
+            encoder.fill(buffer: self.hashTable.buffer, range: 0..<self.hashTable.buffer.length, value: .max)
+        }
         commandBuffer.compute { encoder in
             encoder.setBuffer(elements.buffer, offset: 0, index: 0)
             encoder.setBuffer(self.halfPositions, offset: 0, index: 1)
@@ -125,8 +130,8 @@ public final class SpatialHashing {
         }
     }
     
-    public func findCollisionCandidates(
-        extrnalElements: MTLTypedBuffer? = nil,
+    public func find(
+        extrnalElements: MTLTypedBuffer?,
         collisionCandidates: MTLTypedBuffer,
         connectedVertices: MTLTypedBuffer?,
         in commandBuffer: MTLCommandBuffer
@@ -159,6 +164,32 @@ public final class SpatialHashing {
 
             encoder.dispatch1d(state: state, exactlyOrCovering: elements.descriptor.count)
         }
+    }
+    
+    public func reuse(
+        positions: MTLTypedBuffer,
+        collisionCandidates: MTLTypedBuffer,
+        connectedVertices: MTLTypedBuffer?,
+        in commandBuffer: MTLCommandBuffer
+    ) {
+        commandBuffer.pushDebugGroup("Reuse Collision Candidates")
+        commandBuffer.compute { encoder in
+            encoder.setBuffer(collisionCandidates.buffer, offset: 0, index: 0)
+            encoder.setBuffer(positions.buffer, offset: 0, index: 1)
+            if let connectedVertices {
+                encoder.setBuffer(connectedVertices.buffer, offset: 0, index: 2)
+            } else {
+                encoder.setValue([UInt32.zero], at: 5)
+            }
+            encoder.setValue(self.configuration.radius, at: 3)
+            encoder.setValue(self.configuration.cellSize, at: 4)
+            encoder.setValue(UInt32(collisionCandidates.descriptor.count / positions.descriptor.count), at: 5)
+            encoder.setValue(UInt32((connectedVertices?.descriptor.count ?? 0) / positions.descriptor.count), at: 6)
+            encoder.setValue(UInt32(positions.descriptor.count), at: 7)
+            
+            encoder.dispatch1d(state: self.reuseCollisionCandidatesState, exactlyOrCovering: positions.descriptor.count)
+        }
+        commandBuffer.popDebugGroup()
     }
     
     private func isPacked(_ buffer: MTLTypedBuffer) -> Bool {

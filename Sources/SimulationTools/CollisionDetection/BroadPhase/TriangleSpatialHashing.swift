@@ -3,9 +3,11 @@ import Metal
 public final class TriangleSpatialHashing {
     public struct Configuration {
         let cellSize: Float
+        let bucketSize: Int
         
-        public init(cellSize: Float) {
+        public init(cellSize: Float, bucketSize: Int = 8) {
             self.cellSize = cellSize
+            self.bucketSize = bucketSize
         }
     }
 
@@ -41,8 +43,8 @@ public final class TriangleSpatialHashing {
             trianglesCount: trianglesCount
         )
     }
-
-    init(
+    
+    private init(
         bufferAllocator: MTLBufferAllocator,
         configuration: Configuration,
         trianglesCount: Int
@@ -54,7 +56,7 @@ public final class TriangleSpatialHashing {
         self.reuseTrianglesCacheState = try library.computePipelineState(function: "reuseTrianglesCache")
         
         self.configuration = configuration
-        self.triangleHashTable = try bufferAllocator.buffer(for: UInt32.self, count: trianglesCount * 8, options: .storageModePrivate)
+        self.triangleHashTable = try bufferAllocator.buffer(for: UInt32.self, count: trianglesCount * configuration.bucketSize, options: .storageModePrivate)
         self.triangleHashTableCounter = try bufferAllocator.buffer(for: UInt32.self, count: trianglesCount, options: .storageModePrivate)
     }
     
@@ -68,7 +70,7 @@ public final class TriangleSpatialHashing {
     ) {
         if rehash {
             commandBuffer.blit { encoder in
-                encoder.fill(buffer: triangleHashTableCounter, range: 0..<(MemoryLayout<UInt32>.stride * sceneTriangles.descriptor.count), value: 0)
+                encoder.fill(buffer: triangleHashTableCounter, range: 0..<triangleHashTableCounter.length, value: 0)
             }
             
             commandBuffer.pushDebugGroup("Hash Triangles")
@@ -79,7 +81,8 @@ public final class TriangleSpatialHashing {
                 encoder.setValue(configuration.cellSize, at: 3)
                 encoder.setBuffer(sceneTriangles.buffer, offset: 0, index: 4)
                 encoder.setValue(UInt32(sceneTriangles.descriptor.count), at: 5)
-                encoder.setValue(UInt32(counter), at: 6)
+                encoder.setValue(UInt32(configuration.bucketSize), at: 6)
+                encoder.setValue(UInt32(counter), at: 7)
                 encoder.dispatch1d(state: hashTrianglesState, exactlyOrCovering: sceneTriangles.descriptor.count)
             }
             commandBuffer.popDebugGroup()
@@ -95,7 +98,8 @@ public final class TriangleSpatialHashing {
             encoder.setValue(UInt32(sceneTriangles.descriptor.count), at: 5)
             encoder.setValue(configuration.cellSize, at: 6)
             encoder.setValue(UInt32(collisionCandidates.descriptor.count / positions.descriptor.count), at: 7)
-            encoder.setValue(UInt32(positions.descriptor.count), at: 8)
+            encoder.setValue(UInt32(configuration.bucketSize), at: 8)
+            encoder.setValue(UInt32(positions.descriptor.count), at: 9)
             encoder.dispatch1d(state: findTriangleCandidatesState, exactlyOrCovering: positions.descriptor.count)
         }
         commandBuffer.popDebugGroup()

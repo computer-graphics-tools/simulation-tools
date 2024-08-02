@@ -1,25 +1,6 @@
-
 #include "../../Common/BroadPhaseCommon.h"
 #include "../../Common/Definitions.h"
 #include "../../Common/DistanceFunctions.h"
-
-template <typename T>
-static inline float3 getPosition(T element);
-
-template <>
-inline float3 getPosition(float3 element) {
-    return element;
-}
-
-template <>
-inline float3 getPosition(half3 element) {
-    return float3(element);
-}
-
-template <>
-inline float3 getPosition(packed_float3 element) {
-    return float3(element);
-}
 
 kernel void computeHashAndIndexState(
     device const half4* positions [[ buffer(0) ]],
@@ -66,7 +47,7 @@ kernel void computeCellBoundaries(
 }
 
 template <typename T>
-static inline void convertToHalfPrecisionGeneric(
+METAL_FUNC void convertToHalfPrecisionGeneric(
     constant T* positions,
     device half3* halfPositions,
     uint gid
@@ -108,7 +89,7 @@ kernel void reorderHalfPrecision(
 }
 
 template <typename T>
-static inline void findCollisionCandidatesGeneric(
+METAL_FUNC void findCollisionCandidates(
     device uint* collisionCandidates,
     constant uint2 *hashTable,
     constant uint* cellStart,
@@ -121,6 +102,7 @@ static inline void findCollisionCandidatesGeneric(
     constant float& cellSize,
     constant uint& maxCollisionCandidatesCount,
     constant uint& connectedVerticesCount,
+    bool handlingSelfCollision,
     uint index
 ) {
     float3 position = getPosition(collidablePosition);
@@ -150,24 +132,24 @@ static inline void findCollisionCandidatesGeneric(
         maxCollisionCandidatesCount
       );
     
-    const float squaredDiameter = radius * radius * 2.0;
+    const float squaredDiameter = pow(radius * 2, 2);
     for (int x = hashPosition.x - 1; x <= hashPosition.x + 1; x++) {
         for (int y = hashPosition.y - 1; y <= hashPosition.y + 1; y++) {
             for (int z = hashPosition.z - 1; z <= hashPosition.z + 1; z++) {
-                float3 cellCenter = float3(x, y, z) * cellSize + cellSize * 0.5;
-                if (sdsBox(float3(position) - cellCenter, float3(cellSize * 0.5)) > squaredDiameter) {
+                const float3 cellCenter = float3(x, y, z) * cellSize + cellSize * 0.5;
+                if (sdsBox(cellCenter - float3(position), float3(cellSize * 0.5)) > squaredDiameter) {
                     continue;
                 }
-                
-                uint hash = getHash(int3(x, y, z), hashTableCapacity);
-                uint start = cellStart[hash];
+
+                const uint hash = getHash(int3(x, y, z), hashTableCapacity);
+                const uint start = cellStart[hash];
                 if (start == UINT_MAX) { continue; }
-                uint end = min(cellEnd[hash], start + MAX_COLLISION_CANDIDATES);
+                const uint end = min(cellEnd[hash], start + MAX_COLLISION_CANDIDATES);
                 
                 for (uint i = start; i < end; i++) {
                     uint collisionCandidate = hashTable[i].y;
                     if (collisionCandidate == UINT_MAX) { break; }
-                    if (collisionCandidate == index) { continue; }
+                    if (handlingSelfCollision && collisionCandidate == index) { continue; }
 
                     bool isConnected = false;
                     for (uint j = 0; j < simdConnectedVerticesCount; j++) {
@@ -176,10 +158,10 @@ static inline void findCollisionCandidatesGeneric(
                     }
                     if (isConnected) { continue; }
                     
-                    half3 candidatePosition = colliderPositions[i].xyz;
+                    const half3 candidatePosition = colliderPositions[i].xyz;
                     float distanceSq = length_squared(position - float3(candidatePosition));
                     if (distanceSq > sortedCollisionCandidates.candidates[maxCollisionCandidatesCount - 1].distance) { continue; }
-                    if (distanceSq - squaredDiameter >= 0.0) { continue; }
+                    if (distanceSq > squaredDiameter) { continue; }
                     
                     insertSeed(sortedCollisionCandidates, collisionCandidate, distanceSq, maxCollisionCandidatesCount);
                 }
@@ -214,7 +196,7 @@ kernel void findCollisionCandidatesFloat3(
         uint index = hashTable[gid].y;
         if (index == UINT_MAX) { return; }
            
-        findCollisionCandidatesGeneric(
+        findCollisionCandidates(
            collisionCandidates,
            hashTable,
            cellStart,
@@ -227,10 +209,11 @@ kernel void findCollisionCandidatesFloat3(
            cellSize,
            maxCollisionCandidatesCount,
            connectedVerticesCount,
+           true,
            index
         );
     } else {
-        findCollisionCandidatesGeneric(
+        findCollisionCandidates(
            collisionCandidates,
            hashTable,
            cellStart,
@@ -243,6 +226,7 @@ kernel void findCollisionCandidatesFloat3(
            cellSize,
            maxCollisionCandidatesCount,
            connectedVerticesCount,
+           false,
            gid
         );
     }
@@ -270,7 +254,7 @@ kernel void findCollisionCandidatesPackedFloat3(
         uint index = hashTable[gid].y;
         if (index == UINT_MAX) { return; }
            
-        findCollisionCandidatesGeneric(
+        findCollisionCandidates(
            collisionCandidates,
            hashTable,
            cellStart,
@@ -283,10 +267,11 @@ kernel void findCollisionCandidatesPackedFloat3(
            cellSize,
            maxCollisionCandidatesCount,
            connectedVerticesCount,
+           true,
            index
         );
     } else {
-        findCollisionCandidatesGeneric(
+        findCollisionCandidates(
            collisionCandidates,
            hashTable,
            cellStart,
@@ -299,7 +284,62 @@ kernel void findCollisionCandidatesPackedFloat3(
            cellSize,
            maxCollisionCandidatesCount,
            connectedVerticesCount,
+           false,
            gid
         );
     }
 }
+    
+
+kernel void reuseCollisionCandidates(
+    device uint* collisionCandidates [[ buffer(0) ]],
+    constant float3* positions [[ buffer(1) ]],
+    constant uint* connectedVertices [[buffer(2)]],
+    constant float& spacingScale [[ buffer(3) ]],
+    constant float& cellSize [[ buffer(4) ]],
+    constant uint& maxCollisionCandidatesCount [[ buffer(5) ]],
+    constant uint& connectedVerticesCount [[ buffer(6) ]],
+    constant uint& gridSize [[ buffer(7) ]],
+    uint gid [[ thread_position_in_grid ]]
+) {
+    if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
+    float3 position = float3(positions[gid].xyz);
+    const uint index = gid;
+    const float proximity = cellSize * spacingScale;
+    const float proximitySq = pow(proximity, 2.0);
+    
+    SortedCollisionCandidates sortedCollisionCandidates;
+    initializeCollisionCandidates(
+        collisionCandidates,
+        positions,
+        sortedCollisionCandidates,
+        index,
+        position,
+        maxCollisionCandidatesCount
+    );
+    
+    
+    for (uint i = 0; i < min(maxCollisionCandidatesCount, 4u); i++) {
+        uint candidateIndex = sortedCollisionCandidates.candidates[i].index;
+        uint candidateStart = candidateIndex * maxCollisionCandidatesCount;
+        uint candidateEnd = candidateStart + min(maxCollisionCandidatesCount, 4u);
+        
+        for (uint j = candidateStart; j < candidateEnd; j++) {
+            uint potentialCandidate = collisionCandidates[j];
+            if (potentialCandidate == UINT_MAX || potentialCandidate == index) continue;
+            
+            float3 candidatePosition = float3(positions[potentialCandidate].xyz);
+            float3 diff = position - candidatePosition;
+            float distanceSq = length_squared(diff);
+            float errorSq = distanceSq - proximitySq;
+            if (errorSq >= 0.0) continue;
+            
+            insertSeed(sortedCollisionCandidates, potentialCandidate, distanceSq, maxCollisionCandidatesCount);
+        }
+    }
+    
+    for (int i = 0; i < int(maxCollisionCandidatesCount); i++) {
+        collisionCandidates[index * maxCollisionCandidatesCount + i] = sortedCollisionCandidates.candidates[i].index;
+    }
+}
+
