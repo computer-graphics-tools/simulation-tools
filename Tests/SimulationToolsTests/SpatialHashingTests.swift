@@ -472,7 +472,6 @@ final class SpatialHashingTests: XCTestCase {
         commandBuffer.waitUntilCompleted()
         
         let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: 8)
-    
         
         // Adjusted assertions based on the spatial hashing behavior
         XCTAssertTrue(collisionCandidates[0].contains(2), "Position 0 should detect position 2 as a neighbor")

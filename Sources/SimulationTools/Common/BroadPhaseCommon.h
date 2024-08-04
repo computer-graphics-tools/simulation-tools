@@ -8,12 +8,34 @@ using namespace metal;
  #define MAX_CONNECTED_VERTICES 32
 #define MAX_COLLISION_CANDIDATES 32
 
+typedef float3 (*GetPositionFunc)(uint, constant void*);
+typedef uint3 (*GetTriangleFunc)(uint, constant void*);
+
+METAL_FUNC float3 getPosition(uint index, constant void* data) {
+    constant float3* positions = (constant float3*)data;
+    return positions[index];
+}
+
+METAL_FUNC uint3 getIndex(uint index, constant void* data) {
+    constant uint3* positions = (constant uint3*)data;
+    return positions[index];
+}
+
+METAL_FUNC float3 getPackedPosition(uint index, constant void* data) {
+    constant packed_float3* positions = (constant packed_float3*)data;
+    return positions[index];
+}
+
+METAL_FUNC uint3 getPackedIndex(uint index, constant void* data) {
+    constant packed_uint3* positions = (constant packed_uint3*)data;
+    return positions[index];
+}
+
 struct Triangle {
     float3 a;
     float3 b;
     float3 c;
 };
-
 
 METAL_FUNC int3 hashCoord(float3 position, float gridSpacing) {
     int x = floor(position.x / gridSpacing);
@@ -47,22 +69,16 @@ struct SortedCollisionCandidates {
     CollisionCandidate candidates[MAX_COLLISION_CANDIDATES];
 };
 
-METAL_FUNC Triangle createTriangle(uint3 triangleVertices, constant float3* positions) {
+METAL_FUNC Triangle createTriangle(uint3 triangleVertices,
+                                   GetPositionFunc getPosition,
+                                   constant void* positionData
+                                   ) {
     return Triangle {
-        positions[triangleVertices.x],
-        positions[triangleVertices.y],
-        positions[triangleVertices.z]
+        getPosition(triangleVertices.x, positionData),
+        getPosition(triangleVertices.y, positionData),
+        getPosition(triangleVertices.z, positionData)
     };
 }
-
-METAL_FUNC Triangle createTriangle(uint3 triangleVertices, constant packed_float3* positions) {
-    return Triangle {
-        positions[triangleVertices.x],
-        positions[triangleVertices.y],
-        positions[triangleVertices.z]
-    };
-}
-
 
 template <typename T>
 enable_if_t<is_floating_point_v<T>, void>
@@ -86,10 +102,33 @@ METAL_FUNC initializeCollisionCandidates(
     }
 }
 
+METAL_FUNC void initializeCollisionCandidates(
+    device uint* candidates,
+    GetPositionFunc getPosition,
+    constant void* positions,
+    thread SortedCollisionCandidates &sortedCandidates,
+    uint index,
+    const float3 position,
+    uint count
+) {
+    for (int i = 0; i < int(count); i++) {
+        uint colliderIndex = candidates[index * count + i];
+        sortedCandidates.candidates[i].index = colliderIndex;
+        if (colliderIndex != UINT_MAX) {
+            float3 collider = getPosition(colliderIndex, positions);
+            sortedCandidates.candidates[i].distance = length_squared(position - collider);
+        } else {
+            sortedCandidates.candidates[i].distance = FLT_MAX;
+        }
+    }
+}
+
 void METAL_FUNC initializeTriangleCollisionCandidates(
     device uint* candidates,
-    constant packed_float3* positions,
-    constant packed_uint3* triangles,
+    GetPositionFunc getPosition,
+    constant void* positions,
+    GetTriangleFunc getTriangle,
+    constant void* triangleData,
     uint index,
     float3 position,
     thread SortedCollisionCandidates &collisionCandidates,
@@ -99,8 +138,11 @@ void METAL_FUNC initializeTriangleCollisionCandidates(
         uint colliderIndex = candidates[index * count + i];
         collisionCandidates.candidates[i].index = colliderIndex;
         if (colliderIndex != UINT_MAX) {
-            Triangle triangle = createTriangle(triangles[colliderIndex], positions);
-            collisionCandidates.candidates[i].distance = usdTriangle(position, triangle.a.xyz, triangle.b.xyz, triangle.c.xyz);
+            uint3 triangleIndices = getTriangle(colliderIndex, triangleData);
+            float3 a = getPosition(triangleIndices.x, positions);
+            float3 b = getPosition(triangleIndices.y, positions);
+            float3 c = getPosition(triangleIndices.z, positions);
+            collisionCandidates.candidates[i].distance = usdTriangle(position, a, b, c);
         } else {
             collisionCandidates.candidates[i].distance = FLT_MAX;
         }
@@ -138,24 +180,5 @@ METAL_FUNC insertSeed(
         candidates.candidates[insertPosition] = { .index = index, .distance = distance };
     }
 }
-
-template <typename T>
-static inline float3 getPosition(T element);
-
-template <>
-inline float3 getPosition(float3 element) {
-    return element;
-}
-
-template <>
-inline float3 getPosition(half3 element) {
-    return float3(element);
-}
-
-template <>
-inline float3 getPosition(packed_float3 element) {
-    return float3(element);
-}
-
 
 #endif /* BroadPhaseCommon_h */

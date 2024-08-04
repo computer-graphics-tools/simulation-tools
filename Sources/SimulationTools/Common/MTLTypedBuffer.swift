@@ -26,6 +26,10 @@ public enum MTLBufferValueType {
         case .packedUInt3: return MemoryLayout<UInt32>.stride * 3
         }
     }
+    
+    var isPacked: Bool {
+        self == .packedFloat3 || self == .packedUInt3
+    }
 }
 
 public struct MTLTypedBufferDescriptor {
