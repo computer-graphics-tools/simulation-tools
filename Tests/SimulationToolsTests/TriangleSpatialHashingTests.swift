@@ -168,15 +168,15 @@ final class TriangleSpatialHashingTests: XCTestCase {
             }
 
             spatialHashing.build(
-                colliderPositions: meshPositionsBuffer,
-                colliderTriangles: trianglesBuffer,
+                elements: meshPositionsBuffer,
+                indices: trianglesBuffer,
                 in: commandBuffer
             )
             
             spatialHashing.find(
-                positions: randomPositionsBuffer,
-                colliderPositions: meshPositionsBuffer,
-                colliderTriangles: trianglesBuffer,
+                extrnalElements: randomPositionsBuffer,
+                elements: meshPositionsBuffer,
+                indices: trianglesBuffer,
                 collisionCandidates: collisionCandidatesBuffer,
                 in: commandBuffer
             )
@@ -204,13 +204,11 @@ final class TriangleSpatialHashingTests: XCTestCase {
                 let x = Float(i) * cellSize
                 let z = Float(j) * cellSize
                 
-                // Add four vertices for each grid cell
                 positions.append(SIMD3<Float>(x, 0, z))
                 positions.append(SIMD3<Float>(x + cellSize, 0, z))
                 positions.append(SIMD3<Float>(x, 0, z + cellSize))
                 positions.append(SIMD3<Float>(x + cellSize, 0, z + cellSize))
                 
-                // Add two triangles for each grid cell
                 triangles.append(SIMD3<UInt32>(baseIndex, baseIndex + 1, baseIndex + 2))
                 triangles.append(SIMD3<UInt32>(baseIndex + 1, baseIndex + 3, baseIndex + 2))
                 
@@ -223,7 +221,6 @@ final class TriangleSpatialHashingTests: XCTestCase {
             }
         }
         
-        // Trim excess triangles if we generated more than requested
         triangles = Array(triangles.prefix(triangleCount))
         
         let dimensions = SIMD2<Float>(Float(gridSize) * cellSize, Float(gridSize) * cellSize)
@@ -256,15 +253,15 @@ final class TriangleSpatialHashingTests: XCTestCase {
         let commandBuffer = commandQueue.makeCommandBuffer()!
         
         spatialHashing.build(
-            colliderPositions: colliderPositions,
-            colliderTriangles: colliderTriangles,
+            elements: colliderPositions,
+            indices: colliderTriangles,
             in: commandBuffer
         )
         
         spatialHashing.find(
-            positions: positions,
-            colliderPositions: colliderPositions,
-            colliderTriangles: colliderTriangles,
+            extrnalElements: positions,
+            elements: colliderPositions,
+            indices: colliderTriangles,
             collisionCandidates: collisionCandidatesBuffer,
             in: commandBuffer
         )
@@ -293,6 +290,14 @@ final class TriangleSpatialHashingTests: XCTestCase {
     
     private func createTypedBuffer(count: Int, type: MTLBufferValueType) throws -> MTLTypedBuffer {
         try device.typedBuffer(descriptor: .init(valueType: type, count: count))
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0 ..< Swift.min($0 + size, count)])
+        }
     }
 }
 

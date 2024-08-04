@@ -62,12 +62,12 @@ public final class TriangleSpatialHashing {
     }
     
     public func build(
-        colliderPositions: MTLTypedBuffer,
-        colliderTriangles: MTLTypedBuffer,
+        elements: MTLTypedBuffer,
+        indices: MTLTypedBuffer,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let colliderPositionsPacked = colliderPositions.descriptor.valueType.isPacked
-        let trianglesPacked = colliderTriangles.descriptor.valueType.isPacked
+        let colliderPositionsPacked = elements.descriptor.valueType.isPacked
+        let trianglesPacked = indices.descriptor.valueType.isPacked
         
         commandBuffer.blit { encoder in
             encoder.fill(buffer: self.hashTableCounter, range: 0..<hashTableCounter.length, value: 0)
@@ -76,18 +76,18 @@ public final class TriangleSpatialHashing {
         
         commandBuffer.pushDebugGroup("Hash Triangles")
         commandBuffer.compute { encoder in
-            encoder.setBuffer(colliderPositions.buffer, offset: 0, index: 0)
+            encoder.setBuffer(elements.buffer, offset: 0, index: 0)
             encoder.setBuffer(self.hashTable, offset: 0, index: 1)
             encoder.setBuffer(self.hashTableCounter, offset: 0, index: 2)
             encoder.setValue(self.configuration.cellSize, at: 3)
-            encoder.setBuffer(colliderTriangles.buffer, offset: 0, index: 4)
-            encoder.setValue(UInt32(colliderTriangles.descriptor.count), at: 5)
+            encoder.setBuffer(indices.buffer, offset: 0, index: 4)
+            encoder.setValue(UInt32(indices.descriptor.count), at: 5)
             encoder.setValue(UInt32(configuration.bucketSize), at: 6)
             encoder.setValue(UInt32(counter), at: 7)
             encoder.setValue(colliderPositionsPacked, at: 8)
             encoder.setValue(trianglesPacked, at: 9)
             
-            encoder.dispatch1d(state: self.hashTrianglesState, exactlyOrCovering: colliderTriangles.descriptor.count)
+            encoder.dispatch1d(state: self.hashTrianglesState, exactlyOrCovering: indices.descriptor.count)
         }
         commandBuffer.popDebugGroup()
         
@@ -95,20 +95,20 @@ public final class TriangleSpatialHashing {
     }
 
     public func find(
-        positions: MTLTypedBuffer?,
-        colliderPositions: MTLTypedBuffer,
-        colliderTriangles: MTLTypedBuffer,
+        extrnalElements: MTLTypedBuffer?,
+        elements: MTLTypedBuffer,
+        indices: MTLTypedBuffer,
         collisionCandidates: MTLTypedBuffer,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let useExternalCollidable = positions != nil
-        let positions = positions ?? colliderPositions
+        let useExternalCollidable = extrnalElements != nil
+        let positions = extrnalElements ?? elements
         let collidablePositionsPacked = positions.descriptor.valueType.isPacked
-        let colliderPositionsPacked = colliderPositions.descriptor.valueType.isPacked
-        let trianglesPacked = colliderTriangles.descriptor.valueType.isPacked
+        let colliderPositionsPacked = elements.descriptor.valueType.isPacked
+        let trianglesPacked = indices.descriptor.valueType.isPacked
 
         let params = TriangleSHParameters(
-            hashTableCapacity: UInt32(colliderTriangles.descriptor.count),
+            hashTableCapacity: UInt32(indices.descriptor.count),
             cellSize: self.configuration.cellSize,
             maxCollisionCandidatesCount: UInt32(collisionCandidates.descriptor.count / positions.descriptor.count),
             connectedVerticesCount: 0,
@@ -124,8 +124,8 @@ public final class TriangleSpatialHashing {
         commandBuffer.compute { encoder in
             encoder.setBuffer(collisionCandidates.buffer, offset: 0, index: 0)
             encoder.setBuffer(positions.buffer, offset: 0, index: 1)
-            encoder.setBuffer(colliderPositions.buffer, offset: 0, index: 2)
-            encoder.setBuffer(colliderTriangles.buffer, offset: 0, index: 3)
+            encoder.setBuffer(elements.buffer, offset: 0, index: 2)
+            encoder.setBuffer(indices.buffer, offset: 0, index: 3)
             encoder.setBuffer(self.hashTable, offset: 0, index: 4)
             encoder.setValue([UInt32.max], at: 5)
             encoder.setValue(params, at: 6)
@@ -135,22 +135,22 @@ public final class TriangleSpatialHashing {
     }
 
     public func reuse(
-        positions: MTLTypedBuffer?,
-        colliderPositions: MTLTypedBuffer,
-        colliderTriangles: MTLTypedBuffer,
+        extrnalElements: MTLTypedBuffer?,
+        elements: MTLTypedBuffer,
+        indices: MTLTypedBuffer,
         collisionCandidates: MTLTypedBuffer,
         vertexNeighbors: MTLTypedBuffer,
         trinagleNeighbors: MTLTypedBuffer?,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let useExternalCollidable = positions != nil
-        let positions = positions ?? colliderPositions
+        let useExternalCollidable = extrnalElements != nil
+        let positions = extrnalElements ?? elements
         let collidablePositionsPacked = positions.descriptor.valueType.isPacked
-        let colliderPositionsPacked = colliderPositions.descriptor.valueType.isPacked
-        let trianglesPacked = colliderTriangles.descriptor.valueType.isPacked
+        let colliderPositionsPacked = elements.descriptor.valueType.isPacked
+        let trianglesPacked = indices.descriptor.valueType.isPacked
 
         let params = TriangleSHParameters(
-            hashTableCapacity: UInt32(colliderTriangles.descriptor.count),
+            hashTableCapacity: UInt32(indices.descriptor.count),
             cellSize: self.configuration.cellSize,
             maxCollisionCandidatesCount: UInt32(collisionCandidates.descriptor.count / positions.descriptor.count),
             connectedVerticesCount: 0,
@@ -167,8 +167,8 @@ public final class TriangleSpatialHashing {
             encoder.setBuffer(vertexNeighbors.buffer, offset: 0, index: 0)
             encoder.setBuffer(collisionCandidates.buffer, offset: 0, index: 1)
             encoder.setBuffer(positions.buffer, offset: 0, index: 2)
-            encoder.setBuffer(colliderPositions.buffer, offset: 0, index: 3)
-            encoder.setBuffer(colliderTriangles.buffer, offset: 0, index: 4)
+            encoder.setBuffer(elements.buffer, offset: 0, index: 3)
+            encoder.setBuffer(indices.buffer, offset: 0, index: 4)
             encoder.setValue([UInt32.max], at: 5)
             if let trinagleNeighbors {
                 encoder.setBuffer(trinagleNeighbors.buffer, offset: 0, index: 6)
