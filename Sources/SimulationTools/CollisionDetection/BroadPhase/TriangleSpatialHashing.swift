@@ -2,10 +2,17 @@ import Metal
 import SimulationToolsSharedTypes
 
 public final class TriangleSpatialHashing {
+    /// Configuration for the TriangleSpatialHashing algorithm.
     public struct Configuration {
+        /// The size of each cell in the spatial grid.
         let cellSize: Float
+        /// The size of each bucket in the hash table.
         let bucketSize: Int
         
+        /// Initializes a new Configuration instance.
+        /// - Parameters:
+        ///   - cellSize: The size of each cell in the spatial grid.
+        ///   - bucketSize: The size of each bucket in the hash table.
         public init(cellSize: Float, bucketSize: Int = 8) {
             self.cellSize = cellSize
             self.bucketSize = bucketSize
@@ -21,34 +28,48 @@ public final class TriangleSpatialHashing {
     private let hashTableCounter: MTLBuffer
     private var counter = 0
     
+    /// Initializes a new instance of TriangleSpatialHashing using the specified Metal device.
+    ///
+    /// - Parameters:
+    ///   - device: The Metal device to use for computations.
+    ///   - configuration: The configuration for triangle spatial hashing.
+    ///   - maxElementsCount: The maximum number of elements that can be handled.
+    /// - Throws: An error if initialization fails.
     public convenience init(
         heap: MTLHeap,
         configuration: Configuration,
-        trianglesCount: Int
+        maxElementsCount: Int
     ) throws {
         try self.init(
             bufferAllocator: .init(type: .heap(heap)),
             configuration: configuration,
-            trianglesCount: trianglesCount
+            maxElementsCount: maxElementsCount
         )
     }
 
+    /// Initializes a new instance of TriangleSpatialHashing using the specified Metal heap.
+    ///
+    /// - Parameters:
+    ///   - heap: The Metal heap to allocate resources from.
+    ///   - configuration: The configuration for triangle spatial hashing.
+    ///   - maxElementsCount: The maximum number of elements that can be handled.
+    /// - Throws: An error if initialization fails.
     public convenience init(
         device: MTLDevice,
         configuration: Configuration,
-        trianglesCount: Int
+        maxElementsCount: Int
     ) throws {
         try self.init(
             bufferAllocator: .init(type: .device(device)),
             configuration: configuration,
-            trianglesCount: trianglesCount
+            maxElementsCount: maxElementsCount
         )
     }
     
     private init(
         bufferAllocator: MTLBufferAllocator,
         configuration: Configuration,
-        trianglesCount: Int
+        maxElementsCount: Int
     ) throws {
         let library = try bufferAllocator.device.makeDefaultLibrary(bundle: .module)
 
@@ -57,10 +78,16 @@ public final class TriangleSpatialHashing {
         self.reuseTrianglesCacheState = try library.computePipelineState(function: "reuseTrianglesCache")
         
         self.configuration = configuration
-        self.hashTable = try bufferAllocator.buffer(for: UInt32.self, count: trianglesCount * configuration.bucketSize, options: .storageModePrivate)
-        self.hashTableCounter = try bufferAllocator.buffer(for: UInt32.self, count: trianglesCount, options: .storageModePrivate)
+        self.hashTable = try bufferAllocator.buffer(for: UInt32.self, count: maxElementsCount * configuration.bucketSize, options: .storageModePrivate)
+        self.hashTableCounter = try bufferAllocator.buffer(for: UInt32.self, count: maxElementsCount, options: .storageModePrivate)
     }
     
+    /// Builds the spatial hash structure for the given triangle mesh.
+    ///
+    /// - Parameters:
+    ///   - elements: A buffer containing the vertex positions of the mesh.
+    ///   - indices: A buffer containing the triangle indices of the mesh.
+    ///   - commandBuffer: The command buffer to encode the operation into.
     public func build(
         elements: MTLTypedBuffer,
         indices: MTLTypedBuffer,
@@ -94,15 +121,23 @@ public final class TriangleSpatialHashing {
         counter += 1
     }
 
+    /// Finds collision candidates between the given elements and the triangle mesh.
+    ///
+    /// - Parameters:
+    ///   - externalElements: Optional buffer containing external elements to check for collisions. If nil, uses the mesh vertices.
+    ///   - elements: A buffer containing the vertex positions of the mesh.
+    ///   - indices: A buffer containing the triangle indices of the mesh.
+    ///   - collisionCandidates: Buffer to store the found collision candidates.
+    ///   - commandBuffer: The command buffer to encode the operation into.
     public func find(
-        extrnalElements: MTLTypedBuffer?,
+        externalElements: MTLTypedBuffer?,
         elements: MTLTypedBuffer,
         indices: MTLTypedBuffer,
         collisionCandidates: MTLTypedBuffer,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let useExternalCollidable = extrnalElements != nil
-        let positions = extrnalElements ?? elements
+        let useExternalCollidable = externalElements != nil
+        let positions = externalElements ?? elements
         let collidablePositionsPacked = positions.descriptor.valueType.isPacked
         let colliderPositionsPacked = elements.descriptor.valueType.isPacked
         let trianglesPacked = indices.descriptor.valueType.isPacked
@@ -134,8 +169,19 @@ public final class TriangleSpatialHashing {
         commandBuffer.popDebugGroup()
     }
 
+    
+    /// Reuses previously computed collision information to optimize subsequent collision queries.
+    ///
+    /// - Parameters:
+    ///   - externalElements: Optional buffer containing external elements to check for collisions. If nil, uses the mesh vertices.
+    ///   - elements: A buffer containing the vertex positions of the mesh.
+    ///   - indices: A buffer containing the triangle indices of the mesh.
+    ///   - collisionCandidates: Buffer to store the found collision candidates.
+    ///   - vertexNeighbors: Buffer containing vertex neighbor information.
+    ///   - trinagleNeighbors: Optional buffer containing triangle neighbor information.
+    ///   - commandBuffer: The command buffer to encode the operation into.
     public func reuse(
-        extrnalElements: MTLTypedBuffer?,
+        externalElements: MTLTypedBuffer?,
         elements: MTLTypedBuffer,
         indices: MTLTypedBuffer,
         collisionCandidates: MTLTypedBuffer,
@@ -143,8 +189,8 @@ public final class TriangleSpatialHashing {
         trinagleNeighbors: MTLTypedBuffer?,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let useExternalCollidable = extrnalElements != nil
-        let positions = extrnalElements ?? elements
+        let useExternalCollidable = externalElements != nil
+        let positions = externalElements ?? elements
         let collidablePositionsPacked = positions.descriptor.valueType.isPacked
         let colliderPositionsPacked = elements.descriptor.valueType.isPacked
         let trianglesPacked = indices.descriptor.valueType.isPacked
@@ -187,9 +233,9 @@ public final class TriangleSpatialHashing {
 }
 
 public extension TriangleSpatialHashing {
-    static func totalBuffersSize(triangleCount: Int, configuration: Configuration) -> Int {
-        let triangleHashTableSize = triangleCount * MemoryLayout<UInt32>.stride * configuration.bucketSize
-        let triangleHashTableCounterSize = triangleCount * MemoryLayout<UInt32>.stride
+    static func totalBuffersSize(maxElementsCount: Int, configuration: Configuration) -> Int {
+        let triangleHashTableSize = maxElementsCount * MemoryLayout<UInt32>.stride * configuration.bucketSize
+        let triangleHashTableCounterSize = maxElementsCount * MemoryLayout<UInt32>.stride
         
         return triangleHashTableSize + triangleHashTableCounterSize
     }

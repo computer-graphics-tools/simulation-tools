@@ -2,10 +2,17 @@ import Metal
 import MetalTools
 
 public final class SpatialHashing {
+    /// Configuration for the SpatialHashing algorithm.
     public struct Configuration {
+        /// The size of each cell in the spatial grid.
         let cellSize: Float
+        /// The radius used for collision detection.
         let radius: Float
         
+        /// Initializes a new Configuration instance.
+        /// - Parameters:
+        ///   - cellSize: The size of each cell in the spatial grid.
+        ///   - radius: The radius used for collision detection.
         public init(cellSize: Float, radius: Float) {
             self.cellSize = cellSize
             self.radius = radius
@@ -27,7 +34,14 @@ public final class SpatialHashing {
     private let halfPositions: MTLBuffer
     private let sortedHalfPositions: MTLTypedBuffer
     private let hashTableCapacity: Int
-
+    
+    /// Initializes a new instance of SpatialHashing using the specified Metal device.
+    ///
+    /// - Parameters:
+    ///   - device: The Metal device to use for computations.
+    ///   - configuration: The configuration for spatial hashing.
+    ///   - maxElementsCount: The maximum number of elements that can be handled.
+    /// - Throws: An error if initialization fails.
     public convenience init(
         heap: MTLHeap,
         configuration: Configuration,
@@ -40,6 +54,13 @@ public final class SpatialHashing {
         )
     }
     
+    /// Initializes a new instance of SpatialHashing using the specified Metal heap.
+    ///
+    /// - Parameters:
+    ///   - heap: The Metal heap to allocate resources from.
+    ///   - configuration: The configuration for spatial hashing.
+    ///   - maxElementsCount: The maximum number of elements that can be handled.
+    /// - Throws: An error if initialization fails.
     public convenience init(
         device: MTLDevice,
         configuration: Configuration,
@@ -79,6 +100,11 @@ public final class SpatialHashing {
         self.sortedHalfPositions = try bufferAllocator.typedBuffer(descriptor: .init(valueType: .half3, count: maxElementsCount))
     }
     
+    /// Builds the spatial hash structure for the given elements.
+    ///
+    /// - Parameters:
+    ///   - elements: A buffer containing the positions of elements.
+    ///   - commandBuffer: The command buffer to encode the operation into.
     public func build(
         elements: MTLTypedBuffer,
         in commandBuffer: MTLCommandBuffer
@@ -129,13 +155,20 @@ public final class SpatialHashing {
         commandBuffer.popDebugGroup()
     }
     
+    /// Finds collision candidates for the given elements.
+    ///
+    /// - Parameters:
+    ///   - externalElements: Optional buffer containing external elements to check for collisions. If nil, uses the elements from the build step.
+    ///   - collisionCandidates: Buffer to store the found collision candidates.
+    ///   - connectedVertices: Optional buffer containing connected vertices to exclude from collision checks.
+    ///   - commandBuffer: The command buffer to encode the operation into.
     public func find(
-        extrnalElements: MTLTypedBuffer?,
+        externalElements: MTLTypedBuffer?,
         collisionCandidates: MTLTypedBuffer,
         connectedVertices: MTLTypedBuffer?,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let elements = extrnalElements ?? self.sortedHalfPositions
+        let elements = externalElements ?? self.sortedHalfPositions
         let maxCandidatesCount = collisionCandidates.descriptor.count / elements.descriptor.count
         let positionsPacked = elements.descriptor.valueType.isPacked
 
@@ -157,7 +190,7 @@ public final class SpatialHashing {
             encoder.setValue(self.configuration.cellSize, at: 9)
             encoder.setValue(UInt32(maxCandidatesCount), at: 10)
             encoder.setValue(UInt32((connectedVertices?.descriptor.count ?? 0) / elements.descriptor.count), at: 11)
-            encoder.setValue(UInt32(extrnalElements?.descriptor.count ?? 0), at: 12)
+            encoder.setValue(UInt32(externalElements?.descriptor.count ?? 0), at: 12)
             encoder.setValue(UInt32(elements.descriptor.count), at: 13)
             encoder.setValue(positionsPacked, at: 14)
             encoder.dispatch1d(state: self.findCollisionCandidatesState, exactlyOrCovering: elements.descriptor.count)

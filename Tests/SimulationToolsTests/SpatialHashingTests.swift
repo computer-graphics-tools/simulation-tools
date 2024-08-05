@@ -66,7 +66,7 @@ final class SpatialHashingTests: XCTestCase {
         spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
         
         spatialHashing.find(
-            extrnalElements: nil,
+            externalElements: nil,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: nil,
             in: commandBuffer
@@ -172,7 +172,7 @@ final class SpatialHashingTests: XCTestCase {
         spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
         
         spatialHashing.find(
-            extrnalElements: nil,
+            externalElements: nil,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: connectedVerticesBuffer,
             in: commandBuffer
@@ -241,7 +241,7 @@ final class SpatialHashingTests: XCTestCase {
                 spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
                 
                 spatialHashing.find(
-                    extrnalElements: nil,
+                    externalElements: nil,
                     collisionCandidates: collisionCandidatesBuffer,
                     connectedVertices: nil,
                     in: commandBuffer
@@ -295,7 +295,7 @@ final class SpatialHashingTests: XCTestCase {
             spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
             
             spatialHashing.find(
-                extrnalElements: nil,
+                externalElements: nil,
                 collisionCandidates: collisionCandidatesBuffer,
                 connectedVertices: nil,
                 in: commandBuffer
@@ -352,7 +352,7 @@ final class SpatialHashingTests: XCTestCase {
             spatialHashing.build(elements: colliderBuffer, in: commandBuffer)
             
             spatialHashing.find(
-                extrnalElements: externalBuffer,
+                externalElements: externalBuffer,
                 collisionCandidates: collisionCandidatesBuffer,
                 connectedVertices: nil,
                 in: commandBuffer
@@ -410,7 +410,7 @@ final class SpatialHashingTests: XCTestCase {
         spatialHashing.build(elements: colliderBuffer, in: commandBuffer)
         
         spatialHashing.find(
-            extrnalElements: externalBuffer,
+            externalElements: externalBuffer,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: nil,
             in: commandBuffer
@@ -462,7 +462,7 @@ final class SpatialHashingTests: XCTestCase {
         spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
         
         spatialHashing.find(
-            extrnalElements: nil,
+            externalElements: nil,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: nil,
             in: commandBuffer

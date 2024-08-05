@@ -25,14 +25,14 @@ final class TriangleSpatialHashingTests: XCTestCase {
             try TriangleSpatialHashing(
                 device: self.device,
                 configuration: config,
-                trianglesCount: 100
+                maxElementsCount: 100
             )
         )
     }
     
     func testBuildAndFindExternalCollision() throws {
         let config = TriangleSpatialHashing.Configuration(cellSize: 1.0, bucketSize: 8)
-        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, trianglesCount: 2)
+        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, maxElementsCount: 2)
         
         let colliderPositions = [
             SIMD3<Float>(0, 0, 0), SIMD3<Float>(1, 0, 0), SIMD3<Float>(0, 1, 0),  // Triangle 1
@@ -59,7 +59,7 @@ final class TriangleSpatialHashingTests: XCTestCase {
     
     func testBuildAndFindSelfCollision() throws {
         let config = TriangleSpatialHashing.Configuration(cellSize: 1.0, bucketSize: 8)
-        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, trianglesCount: 3)
+        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, maxElementsCount: 3)
         
         let positions = [
             SIMD3<Float>(0, 0, 0), SIMD3<Float>(1, 0, 0), SIMD3<Float>(0, 1, 0),  // Triangle 1
@@ -85,7 +85,7 @@ final class TriangleSpatialHashingTests: XCTestCase {
     
     func testPackedFormatExternalCollision() throws {
         let config = TriangleSpatialHashing.Configuration(cellSize: 1.0, bucketSize: 8)
-        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, trianglesCount: 2)
+        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, maxElementsCount: 2)
         
         let colliderPositions = [
             packed_float3(0, 0, 0), packed_float3(1, 0, 0), packed_float3(0, 1, 0),  // Triangle 1
@@ -112,7 +112,7 @@ final class TriangleSpatialHashingTests: XCTestCase {
     
     func testMixedFormatSelfCollision() throws {
         let config = TriangleSpatialHashing.Configuration(cellSize: 1.0, bucketSize: 8)
-        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, trianglesCount: 3)
+        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, maxElementsCount: 3)
         
         let positions = [
             packed_float3(0, 0, 0), packed_float3(1, 0, 0), packed_float3(0, 1, 0),  // Triangle 1
@@ -148,7 +148,7 @@ final class TriangleSpatialHashingTests: XCTestCase {
     
     func testPerformanceForTriangles(_ count: Int) throws {
         let config = TriangleSpatialHashing.Configuration(cellSize: 1.0, bucketSize: 8)
-        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, trianglesCount: count)
+        let spatialHashing = try TriangleSpatialHashing(device: self.device, configuration: config, maxElementsCount: count)
         
         let (meshPositions, triangles, meshDimensions) = generateUniformMesh(triangleCount: count)
         let randomPositions = generateRandomPositions(count: count, meshDimensions: meshDimensions)
@@ -174,7 +174,7 @@ final class TriangleSpatialHashingTests: XCTestCase {
             )
             
             spatialHashing.find(
-                extrnalElements: randomPositionsBuffer,
+                externalElements: randomPositionsBuffer,
                 elements: meshPositionsBuffer,
                 indices: trianglesBuffer,
                 collisionCandidates: collisionCandidatesBuffer,
@@ -259,7 +259,7 @@ final class TriangleSpatialHashingTests: XCTestCase {
         )
         
         spatialHashing.find(
-            extrnalElements: positions,
+            externalElements: positions,
             elements: colliderPositions,
             indices: colliderTriangles,
             collisionCandidates: collisionCandidatesBuffer,
