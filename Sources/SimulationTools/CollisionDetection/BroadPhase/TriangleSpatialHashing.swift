@@ -210,11 +210,11 @@ public final class TriangleSpatialHashing {
 
         commandBuffer.pushDebugGroup("Reuse Triangles")
         commandBuffer.compute { encoder in
-            encoder.setBuffer(vertexNeighbors.buffer, offset: 0, index: 0)
-            encoder.setBuffer(collisionCandidates.buffer, offset: 0, index: 1)
-            encoder.setBuffer(positions.buffer, offset: 0, index: 2)
-            encoder.setBuffer(elements.buffer, offset: 0, index: 3)
-            encoder.setBuffer(indices.buffer, offset: 0, index: 4)
+            encoder.setBuffer(collisionCandidates.buffer, offset: 0, index: 0)
+            encoder.setBuffer(positions.buffer, offset: 0, index: 1)
+            encoder.setBuffer(elements.buffer, offset: 0, index: 2)
+            encoder.setBuffer(indices.buffer, offset: 0, index: 3)
+            encoder.setBuffer(vertexNeighbors.buffer, offset: 0, index: 4)
             encoder.setValue([UInt32.max], at: 5)
             if let trinagleNeighbors {
                 encoder.setBuffer(trinagleNeighbors.buffer, offset: 0, index: 6)
