@@ -27,7 +27,7 @@ let package = Package(
         .target(
             name: "SimulationTools",
             dependencies: [
-                .product(name: "MetalComputeTools", package: "metal-tools")
+                .product(name: "MetalTools", package: "metal-tools")
             ],
             resources: [
                 .process("CollisionDetection/BroadPhase/BitonicSort/BitonicSort.metal"),

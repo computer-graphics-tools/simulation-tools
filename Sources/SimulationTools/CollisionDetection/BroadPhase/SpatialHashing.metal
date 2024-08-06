@@ -42,12 +42,12 @@ kernel void computeCellBoundaries(
     device uint* cellStart [[ buffer(0) ]],
     device uint* cellEnd [[ buffer(1) ]],
     device const uint2* hashTable [[ buffer(2) ]],
-    constant uint& gridSize [[ buffer(3) ]],
+    constant uint& hashTableSize [[ buffer(3) ]],
     uint gid [[ thread_position_in_grid ]],
     uint threadIdx [[ thread_position_in_threadgroup ]],
     threadgroup uint* sharedHash [[ threadgroup(0) ]]
 ) {
-    if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
+    if (deviceDoesntSupportNonuniformThreadgroups && gid >= hashTableSize) { return; }
     uint2 hashIndex = hashTable[gid];
     uint hash = hashIndex.x;
     sharedHash[threadIdx + 1] = hash;
@@ -58,13 +58,12 @@ kernel void computeCellBoundaries(
 
     if (gid == 0 || hash != sharedHash[threadIdx]) {
         cellStart[hash] = gid;
-
         if (gid > 0) {
             cellEnd[sharedHash[threadIdx]] = gid;
         }
     }
 
-    if (gid == gridSize - 1) {
+    if (gid == hashTableSize - 1) {
         cellEnd[hash] = gid + 1;
     }
 }
@@ -90,9 +89,6 @@ kernel void findCollisionCandidates(
 
     float3 position = float3(sortedPositions[gid].xyz);
     int3 hashPosition = hashCoord(position, cellSize);
-    int ix = hashPosition.x;
-    int iy = hashPosition.y;
-    int iz = hashPosition.z;
     
     uint4 simdConnectedVertices[MAX_CONNECTED_VERTICES / 4];
     uint simdConnectedVerticesCount = connectedVerticesCount / 4;
@@ -110,11 +106,19 @@ kernel void findCollisionCandidates(
         
     const float proximity = cellSize * spacingScale;
     
-    uint candidatesCount = 0;
+    SortedCollisionCandidates sortedCollisionCandidates;
+    initializeCollisionCandidates(
+        collisionCandidates,
+        sortedPositions,
+        sortedCollisionCandidates,
+        index,
+        position,
+        maxCollisionCandidatesCount
+      );
     
-    for (int x = ix - 1; x <= ix + 1; x++) {
-        for (int y = iy - 1; y <= iy + 1; y++) {
-            for (int z = iz - 1; z <= iz + 1; z++) {
+    for (int x = hashPosition.x - 1; x <= hashPosition.x + 1; x++) {
+        for (int y = hashPosition.y - 1; y <= hashPosition.y + 1; y++) {
+            for (int z = hashPosition.z - 1; z <= hashPosition.z + 1; z++) {
                 uint hash = getHash(int3(x, y, z), hashTableCapacity);
                 uint start = cellStart[hash];
                 if (start == UINT_MAX) { continue; }
@@ -138,15 +142,13 @@ kernel void findCollisionCandidates(
                     float errorSq = distanceSq - pow(proximity, 2.0);
                     if (errorSq >= 0.0) { continue; }
 
-                    collisionCandidates[index * maxCollisionCandidatesCount + candidatesCount] = collisionCandidate;
-                    candidatesCount += 1;
-                    if (candidatesCount >= maxCollisionCandidatesCount) { return; }
+                    insertSeed(sortedCollisionCandidates, collisionCandidate, distanceSq, maxCollisionCandidatesCount);
                 }
             }
         }
     }
     
-    if (candidatesCount < maxCollisionCandidatesCount) {
-        collisionCandidates[index * maxCollisionCandidatesCount + candidatesCount] = UINT_MAX;
+    for (int i = 0; i < int(maxCollisionCandidatesCount); i++) {
+        collisionCandidates[index * maxCollisionCandidatesCount + i] = sortedCollisionCandidates.candidates[i].index;
     }
 }
