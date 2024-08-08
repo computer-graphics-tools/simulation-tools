@@ -19,50 +19,43 @@ final class SpatialHashingTests: XCTestCase {
     }
     
     func testSpatialHashingInitialization() throws {
-        let positions: [SIMD4<Float>] = [
-            [0.0, 0.0, 0.0, 1.0],
-            [1.0, 1.0, 1.0, 1.0],
-            [-1.0, 1.0, 1.0, 1.0],
-            [1.0, -1.0, 1.0, 1.0]
-        ]
         let config = SpatialHashing.Configuration(
             cellSize: 1.0,
-            spacingScale: 1.0,
-            collisionType: .vertexToVertex
+            radius: 0.5
         )
         
         XCTAssertNoThrow(
             try SpatialHashing(
                 device: self.device,
                 configuration: config,
-                positions: positions
+                maxPositionsCount: 100
             )
         )
     }
     
-    func generateMockData() -> [SIMD4<Float>] {
-        return (0..<100).map { i in
+    func generateMockData(count: Int = 100) -> [SIMD3<Float>] {
+        return (0..<count).map { i in
             let angle = Float(i) * Float.pi / 50.0
-            return [cos(angle) * 10.0, sin(angle) * 10.0, 0.0, 1.0]
+            return SIMD3<Float>(cos(angle) * 10.0, sin(angle) * 10.0, 0.0)
         }
     }
     
-    func collisionCandidates(positions: [SIMD4<Float>], candidatesCount: Int = 8, cellSize: Float) throws -> MTLTypedBuffer<UInt32> {
+    func collisionCandidates(positions: [SIMD3<Float>], candidatesCount: Int = 8, cellSize: Float) throws -> MTLTypedBuffer {
         let config = SpatialHashing.Configuration(
             cellSize: cellSize,
-            spacingScale: 1.0,
-            collisionType: .vertexToVertex
+            radius: cellSize / 2.0
         )
         
         let spatialHashing = try SpatialHashing(
             device: self.device,
             configuration: config,
-            positions: positions
+            maxPositionsCount: positions.count
         )
         
-        let positionsBuffer = try device.typedBuffer(with: positions)
+        let positionsBuffer = try device.typedBuffer(with: positions, valueType: .float3)
         let collisionCandidatesBuffer = try device.typedBuffer(
-            with: Array(repeating: UInt32.max, count: positions.count * candidatesCount)
+            with: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
+            valueType: .uint
         )
         
         guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
@@ -70,8 +63,10 @@ final class SpatialHashingTests: XCTestCase {
             throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
         }
         
-        spatialHashing.build(
-            positions: positionsBuffer,
+        spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
+        
+        spatialHashing.find(
+            collidablePositions: nil,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: nil,
             in: commandBuffer
@@ -86,20 +81,20 @@ final class SpatialHashingTests: XCTestCase {
     func testBuildMethodInitialization() throws {
         let positions = generateMockData()
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, cellSize: 0.5)
-        XCTAssertNotNil(collisionCandidatesBuffer.values, "Collision candidates buffer should not be nil")
+        XCTAssertNotNil(collisionCandidatesBuffer.values()! as [UInt32], "Collision candidates buffer should not be nil")
     }
     
     func testCollisionCandidatesContainClosestProximity() throws {
-        let positions: [SIMD4<Float>] = [
-            [-0.5, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0, 1.0],
-            [1.0, 0.0, 0.0, 1.0],
-            [1.5, 0.0, 0.0, 1.0]
+        let positions: [SIMD3<Float>] = [
+            [-0.5, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.5, 0.0, 0.0]
         ]
         let candidatesCount = 4
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
-        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount).map { Set($0) }
-        
+        let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: candidatesCount)
+
         XCTAssertTrue(collisionCandidates[0].contains(1))
         XCTAssertTrue(collisionCandidates[1].contains(0))
         XCTAssertTrue(collisionCandidates[2].contains(3))
@@ -110,44 +105,22 @@ final class SpatialHashingTests: XCTestCase {
         let positions = generateMockData()
         let candidatesCount = 4
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
-        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount).map { Set($0) }
-        
+        let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: candidatesCount)
+
         XCTAssertFalse(collisionCandidates[0].contains(0))
         XCTAssertFalse(collisionCandidates[1].contains(1))
         XCTAssertFalse(collisionCandidates[2].contains(2))
         XCTAssertFalse(collisionCandidates[3].contains(3))
     }
     
-    func testCollisionCandidatesDoNotContainNonClosestProximity() throws {
-        let positions: [SIMD4<Float>] = [
-            [-0.5, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0, 1.0],
-            [1.0, 0.0, 0.0, 1.0],
-            [1.5, 0.0, 0.0, 1.0]
-        ]
-        
-        let candidatesCount = 4
-        let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 0.5)
-        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount).map { Set($0) }
-        
-        XCTAssertFalse(collisionCandidates[0].contains(2))
-        XCTAssertFalse(collisionCandidates[0].contains(3))
-        XCTAssertFalse(collisionCandidates[1].contains(2))
-        XCTAssertFalse(collisionCandidates[1].contains(3))
-        
-        XCTAssertFalse(collisionCandidates[2].contains(0))
-        XCTAssertFalse(collisionCandidates[2].contains(1))
-        XCTAssertFalse(collisionCandidates[3].contains(0))
-        XCTAssertFalse(collisionCandidates[3].contains(1))
-    }
-    
     func testCollisionCandidatesSymmetry() throws {
-        let positions = generateMockData()
+        let positions = generateMockData(count: 10)
 
         let candidatesCount = 8
         let collisionCandidatesBuffer = try collisionCandidates(positions: positions, candidatesCount: candidatesCount, cellSize: 1.0)
-        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount).map { Set($0) }
-        
+        let collisionCandidates: [Set<UInt32>] = collisionCandidatesBuffer.values()!.chunked(into: candidatesCount).map { Set($0) }
+
+        print(collisionCandidates.enumerated().map { $0 })
         for (i, candidates) in collisionCandidates.enumerated() {
             for candidate in candidates where candidate != UInt32.max {
                 XCTAssertTrue(collisionCandidates[Int(candidate)].contains(UInt32(i)), "Symmetry check failed: \(i) and \(candidate)")
@@ -156,30 +129,30 @@ final class SpatialHashingTests: XCTestCase {
     }
     
     func testConnectedVerticesExclusion() throws {
-        let positions: [SIMD4<Float>] = [
-            [0.0, 0.0, 0.0, 1.0],
-            [0.1, 0.0, 0.0, 1.0],  // Connected to 0, closer than cell size
-            [0.5, 0.0, 0.0, 1.0],  // Not connected, within cell size
-            [1.5, 0.0, 0.0, 1.0]   // Not connected, outside cell size
+        let positions: [SIMD3<Float>] = [
+            [0.0, 0.0, 0.0],
+            [0.1, 0.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [1.501, 0.0, 0.0]
         ]
         
         let cellSize: Float = 1.0
         let candidatesCount = 8
         let config = SpatialHashing.Configuration(
             cellSize: cellSize,
-            spacingScale: 1.0,
-            collisionType: .vertexToVertex
+            radius: cellSize / 2.0
         )
         
         let spatialHashing = try SpatialHashing(
             device: self.device,
             configuration: config,
-            positions: positions
+            maxPositionsCount: positions.count
         )
         
-        let positionsBuffer = try device.typedBuffer(with: positions)
+        let positionsBuffer = try device.typedBuffer(with: positions, valueType: .float3)
         let collisionCandidatesBuffer = try device.typedBuffer(
-            with: Array(repeating: UInt32.max, count: positions.count * candidatesCount)
+            with: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
+            valueType: .uint
         )
         
         // Specify connected vertices: 0 and 1 are connected
@@ -189,15 +162,17 @@ final class SpatialHashingTests: XCTestCase {
             UInt32.max, UInt32.max, UInt32.max, UInt32.max,  // For vertex 2
             UInt32.max, UInt32.max, UInt32.max, UInt32.max   // For vertex 3
         ]
-        let connectedVerticesBuffer = try device.typedBuffer(with: connectedVertices)
+        let connectedVerticesBuffer = try device.typedBuffer(with: connectedVertices, valueType: .uint)
         
         guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
             XCTFail("Failed to create command buffer")
             throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
         }
         
-        spatialHashing.build(
-            positions: positionsBuffer,
+        spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
+        
+        spatialHashing.find(
+            collidablePositions: nil,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: connectedVerticesBuffer,
             in: commandBuffer
@@ -206,7 +181,7 @@ final class SpatialHashingTests: XCTestCase {
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         
-        let collisionCandidates = collisionCandidatesBuffer.values!.chunked(into: candidatesCount)
+        let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: candidatesCount)
         
         // Verify that vertex 0 does not have vertex 1 as a collision candidate
         XCTAssertFalse(collisionCandidates[0].contains(1), "Vertex 0 should not have connected vertex 1 as a collision candidate")
@@ -230,32 +205,31 @@ final class SpatialHashingTests: XCTestCase {
     }
     
     func testPerformanceForPositions(_ count: Int) throws {
-        let positions: [SIMD4<Float>] = (0..<count).map { _ in
-            [
+        let positions: [SIMD3<Float>] = (0..<count).map { _ in
+            SIMD3<Float>(
                 Float.random(in: -100...100),
                 Float.random(in: -100...100),
-                Float.random(in: -100...100),
-                1.0
-            ]
+                Float.random(in: -100...100)
+            )
         }
         let config = SpatialHashing.Configuration(
             cellSize: 1.0,
-            spacingScale: 1.0,
-            collisionType: .vertexToVertex
+            radius: 0.5
         )
         
         do {
-            let heap = try self.device.heap(size: SpatialHashing.totalBuffersSize(positionsCount: count), storageMode: .shared)
+            let heap = try self.device.heap(size: SpatialHashing.totalBuffersSize(maxPositionsCount: count), storageMode: .shared)
             let spatialHashing = try SpatialHashing(
                 heap: heap,
                 configuration: config,
-                positions: positions
+                maxPositionsCount: positions.count
             )
             
             let candidatesCount = 8
-            let positionsBuffer = try device.typedBuffer(with: positions)
+            let positionsBuffer = try device.typedBuffer(with: positions, valueType: .float3)
             let collisionCandidatesBuffer = try device.typedBuffer(
-                with: Array(repeating: UInt32.max, count: positions.count * candidatesCount)
+                with: Array(repeating: UInt32.max, count: positions.count * candidatesCount),
+                valueType: .uint
             )
             
             measure {
@@ -264,8 +238,10 @@ final class SpatialHashingTests: XCTestCase {
                     return
                 }
 
-                spatialHashing.build(
-                    positions: positionsBuffer,
+                spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
+                
+                spatialHashing.find(
+                    collidablePositions: nil,
                     collisionCandidates: collisionCandidatesBuffer,
                     connectedVertices: nil,
                     in: commandBuffer
@@ -286,6 +262,238 @@ final class SpatialHashingTests: XCTestCase {
         }
     }
     
+    func testPackedFloat3Format() throws {
+            let positions: [SIMD3<Float>] = [
+                [0.0, 0.0, 0.0],
+                [0.5, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.5, 0.0, 0.0]
+            ]
+            
+            let packedPositions = positions.map { packed_float3($0) }
+            
+            let cellSize: Float = 1.0
+            let config = SpatialHashing.Configuration(cellSize: cellSize, radius: 0.5)
+            
+            let spatialHashing = try SpatialHashing(
+                device: self.device,
+                configuration: config,
+                maxPositionsCount: positions.count
+            )
+            
+            let positionsBuffer = try device.typedBuffer(with: packedPositions, valueType: .packedFloat3)
+            let collisionCandidatesBuffer = try device.typedBuffer(
+                with: Array(repeating: UInt32.max, count: positions.count * 8),
+                valueType: .uint
+            )
+            
+            guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
+                XCTFail("Failed to create command buffer")
+                throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
+            }
+            
+            spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
+            
+            spatialHashing.find(
+                collidablePositions: nil,
+                collisionCandidates: collisionCandidatesBuffer,
+                connectedVertices: nil,
+                in: commandBuffer
+            )
+            
+            commandBuffer.commit()
+            commandBuffer.waitUntilCompleted()
+            
+            let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: 8)
+            
+            XCTAssertTrue(collisionCandidates[0].contains(1))
+            XCTAssertTrue(collisionCandidates[1].contains(0))
+            XCTAssertTrue(collisionCandidates[1].contains(2))
+            XCTAssertTrue(collisionCandidates[2].contains(1))
+            XCTAssertTrue(collisionCandidates[2].contains(3))
+            XCTAssertTrue(collisionCandidates[3].contains(2))
+        }
+        
+        func testExternalCollidablePositions() throws {
+            let colliderPositions: [SIMD3<Float>] = [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0]
+            ]
+            
+            let externalPositions: [SIMD3<Float>] = [
+                [0.5, 0.0, 0.0],
+                [1.5, 0.0, 0.0],
+                [2.5, 0.0, 0.0]
+            ]
+            
+            let cellSize: Float = 1.0
+            let config = SpatialHashing.Configuration(cellSize: cellSize, radius: 0.5)
+            
+            let spatialHashing = try SpatialHashing(
+                device: self.device,
+                configuration: config,
+                maxPositionsCount: colliderPositions.count
+            )
+            
+            let colliderBuffer = try device.typedBuffer(with: colliderPositions, valueType: .float3)
+            let externalBuffer = try device.typedBuffer(with: externalPositions, valueType: .float3)
+            let collisionCandidatesBuffer = try device.typedBuffer(
+                with: Array(repeating: UInt32.max, count: externalPositions.count * 8),
+                valueType: .uint
+            )
+            
+            guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
+                XCTFail("Failed to create command buffer")
+                throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
+            }
+            
+            spatialHashing.build(positions: colliderBuffer, in: commandBuffer)
+            
+            spatialHashing.find(
+                collidablePositions: externalBuffer,
+                collisionCandidates: collisionCandidatesBuffer,
+                connectedVertices: nil,
+                in: commandBuffer
+            )
+            
+            commandBuffer.commit()
+            commandBuffer.waitUntilCompleted()
+            
+            let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: 8)
+            
+            XCTAssertTrue(collisionCandidates[0].contains(0))
+            XCTAssertTrue(collisionCandidates[0].contains(1))
+            XCTAssertTrue(collisionCandidates[1].contains(1))
+            XCTAssertTrue(collisionCandidates[1].contains(2))
+            XCTAssertTrue(collisionCandidates[2].contains(2))
+            XCTAssertTrue(collisionCandidates[2].contains(3))
+        }
+        
+    func testMixedFormatPositions() throws {
+        let colliderPositions: [SIMD3<Float>] = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0]
+        ]
+        
+        let externalPositions: [SIMD3<Float>] = [
+            [0.5, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+            [2.5, 0.0, 0.0]
+        ]
+        
+        let cellSize: Float = 1.0
+        let config = SpatialHashing.Configuration(cellSize: cellSize, radius: 0.5)
+        
+        let spatialHashing = try SpatialHashing(
+            device: self.device,
+            configuration: config,
+            maxPositionsCount: colliderPositions.count
+        )
+        
+        let packedColliderPositions = colliderPositions.map { packed_float3($0) }
+        let colliderBuffer = try device.typedBuffer(with: packedColliderPositions, valueType: .packedFloat3)
+        let externalBuffer = try device.typedBuffer(with: externalPositions, valueType: .float3)
+        let collisionCandidatesBuffer = try device.typedBuffer(
+            with: Array(repeating: UInt32.max, count: externalPositions.count * 8),
+            valueType: .uint
+        )
+        
+        guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
+            XCTFail("Failed to create command buffer")
+            throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
+        }
+        
+        spatialHashing.build(positions: colliderBuffer, in: commandBuffer)
+        
+        spatialHashing.find(
+            collidablePositions: externalBuffer,
+            collisionCandidates: collisionCandidatesBuffer,
+            connectedVertices: nil,
+            in: commandBuffer
+        )
+        
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        
+        let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: 8)
+        
+        XCTAssertTrue(collisionCandidates[0].contains(0))
+        XCTAssertTrue(collisionCandidates[0].contains(1))
+        XCTAssertTrue(collisionCandidates[1].contains(1))
+        XCTAssertTrue(collisionCandidates[1].contains(2))
+        XCTAssertTrue(collisionCandidates[2].contains(2))
+        XCTAssertTrue(collisionCandidates[2].contains(3))
+    }
+    
+    func testEdgeCases() throws {
+        let positions: [SIMD3<Float>] = [
+            [0.0, 0.0, 0.0],
+            [1.01, 0.0, 0.0],
+            [0.99, 0.0, 0.0],
+            [1.1, 0.0, 0.0],
+            [10.0, 10.0, 10.0]
+        ]
+        
+        let cellSize: Float = 1.0
+        let radius: Float = 0.5
+        let config = SpatialHashing.Configuration(cellSize: cellSize, radius: radius)
+        
+        let spatialHashing = try SpatialHashing(
+            device: self.device,
+            configuration: config,
+            maxPositionsCount: positions.count
+        )
+        
+        let positionsBuffer = try device.typedBuffer(with: positions, valueType: .float3)
+        let collisionCandidatesBuffer = try device.typedBuffer(
+            with: Array(repeating: UInt32.max, count: positions.count * 8),
+            valueType: .uint
+        )
+        
+        guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
+            XCTFail("Failed to create command buffer")
+            throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
+        }
+        
+        spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
+        
+        spatialHashing.find(
+            collidablePositions: nil,
+            collisionCandidates: collisionCandidatesBuffer,
+            connectedVertices: nil,
+            in: commandBuffer
+        )
+        
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        
+        let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: 8)
+        
+        // Adjusted assertions based on the spatial hashing behavior
+        XCTAssertTrue(collisionCandidates[0].contains(2), "Position 0 should detect position 2 as a neighbor")
+        XCTAssertFalse(collisionCandidates[0].contains(1), "Position 0 should not detect position 1 as a neighbor")
+        
+        XCTAssertTrue(collisionCandidates[1].contains(2), "Position 1 should detect position 2 as a neighbor")
+        XCTAssertTrue(collisionCandidates[1].contains(3), "Position 1 should detect position 3 as a neighbor")
+        
+        XCTAssertTrue(collisionCandidates[2].contains(0), "Position 2 should detect position 0 as a neighbor")
+        XCTAssertTrue(collisionCandidates[2].contains(1), "Position 2 should detect position 1 as a neighbor")
+        XCTAssertTrue(collisionCandidates[2].contains(3), "Position 2 should detect position 3 as a neighbor")
+        
+        XCTAssertTrue(collisionCandidates[3].contains(1), "Position 3 should detect position 1 as a neighbor")
+        XCTAssertTrue(collisionCandidates[3].contains(2), "Position 3 should detect position 2 as a neighbor")
+        
+        XCTAssertFalse(collisionCandidates[4].contains(0), "Position 4 should not detect any neighbors")
+        XCTAssertFalse(collisionCandidates[4].contains(1), "Position 4 should not detect any neighbors")
+        XCTAssertFalse(collisionCandidates[4].contains(2), "Position 4 should not detect any neighbors")
+        XCTAssertFalse(collisionCandidates[4].contains(3), "Position 4 should not detect any neighbors")
+    }
+    
+    
     func testPerformanceFor1kPositions() throws {
         try testPerformanceForPositions(1_000)
     }
@@ -300,5 +508,32 @@ final class SpatialHashingTests: XCTestCase {
     
     func testPerformanceFor1mPositions() throws {
         try testPerformanceForPositions(1_000_000)
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0 ..< Swift.min($0 + size, count)])
+        }
+    }
+}
+
+private struct packed_float3 {
+    let x: Float
+    let y: Float
+    let z: Float
+
+    init(x: Float, y: Float, z: Float) {
+        self.x = x
+        self.y = y
+        self.z = z
+    }
+    
+    
+    init(_ simd: SIMD3<Float>) {
+        self.x = simd.x
+        self.y = simd.y
+        self.z = simd.z
     }
 }

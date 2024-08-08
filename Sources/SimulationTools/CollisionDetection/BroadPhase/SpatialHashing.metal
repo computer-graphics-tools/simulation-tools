@@ -1,30 +1,8 @@
 #include "../../Common/BroadPhaseCommon.h"
 #include "../../Common/Definitions.h"
+#include "../../Common/DistanceFunctions.h"
 
-kernel void convertToHalfPrecisionPositions(
-   constant float4 *positions [[ buffer(0) ]],
-   device half4 *outPositions [[ buffer(1) ]],
-   constant uint& gridSize [[ buffer(2) ]],
-   uint gid [[thread_position_in_grid]]
-) {
-    if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
-    outPositions[gid] = half4(positions[gid]);
-}
-
-kernel void reorderHalfPrecisionPositions(
-   constant half4 *positions [[ buffer(0) ]],
-   device half4 *outPositions [[ buffer(1) ]],
-   constant uint2* hashTable [[ buffer(2) ]],
-   constant uint& gridSize [[ buffer(3) ]],
-   uint gid [[thread_position_in_grid]]
-) {
-    if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
-    uint2 hashAndIndex = hashTable[gid];
-    half3 position = half3(positions[hashAndIndex.y].xyz);
-    outPositions[gid] = half4(position, 1.0);
-}
-
-kernel void computeVertexHashAndIndex(
+kernel void computeHashAndIndexState(
     device const half4* positions [[ buffer(0) ]],
     device uint2* hashTable [[ buffer(1) ]],
     constant uint& hashTableCapacity [[ buffer(2) ]],
@@ -68,87 +46,107 @@ kernel void computeCellBoundaries(
     }
 }
 
+kernel void convertToHalf(
+    constant void* positions [[ buffer(0) ]],
+    device half3* halfPositions [[ buffer(1) ]],
+    constant uint& gridSize [[ buffer(2) ]],
+    constant bool& usePackedPositions [[ buffer(3) ]],
+    uint gid [[ thread_position_in_grid ]]
+) {
+    if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
+    GetPositionFunc getCollidablePosition = usePackedPositions ? getPackedPosition : getPosition;
+
+    float3 position = getCollidablePosition(gid, positions);
+    halfPositions[gid] = half3(position);
+}
+
+kernel void reorderHalfPrecision(
+    device const half3* halfPositions [[ buffer(0) ]],
+    device half3* sortedHalfPositions [[ buffer(1) ]],
+    device const uint2* hashTable [[ buffer(2) ]],
+    constant uint& gridSize [[ buffer(3) ]],
+    uint gid [[ thread_position_in_grid ]]
+) {
+    if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
+    uint2 hashAndIndex = hashTable[gid];
+    sortedHalfPositions[gid] = halfPositions[hashAndIndex.y];
+}
+
 kernel void findCollisionCandidates(
     device uint* collisionCandidates [[ buffer(0) ]],
     constant uint2* hashTable [[ buffer(1) ]],
     constant uint* cellStart [[ buffer(2) ]],
     constant uint* cellEnd [[ buffer(3) ]],
-    constant half4* sortedPositions [[ buffer(4) ]],
-    constant uint* connectedVertices [[buffer(5)]],
-    constant uint& hashTableCapacity [[ buffer(6) ]],
-    constant float& spacingScale [[ buffer(7) ]],
-    constant float& cellSize [[ buffer(8) ]],
-    constant uint& maxCollisionCandidatesCount [[ buffer(9) ]],
-    constant uint& connectedVerticesCount [[ buffer(10) ]],
-    constant uint& gridSize [[ buffer(11) ]],
+    constant half3* colliderPositions [[ buffer(4) ]],
+    constant void* collidablePositions [[ buffer(5) ]],
+    constant uint* connectedVertices [[buffer(6)]],
+    constant uint& hashTableCapacity [[ buffer(7) ]],
+    constant float& radius [[ buffer(8) ]],
+    constant float& cellSize [[ buffer(9) ]],
+    constant uint& collisionCandidatesCount [[ buffer(10) ]],
+    constant uint& connectedVerticesCount [[ buffer(11) ]],
+    constant uint& collidableCount [[ buffer(12) ]],
+    constant uint& gridSize [[ buffer(13) ]],
+    constant bool& usePackedPositions [[ buffer(14) ]],
     uint gid [[ thread_position_in_grid ]]
 ) {
     if (deviceDoesntSupportNonuniformThreadgroups && gid >= gridSize) { return; }
-    uint index = hashTable[gid].y;
+    const bool handlingSelfCollision = collidableCount == 0;
+    const uint index = handlingSelfCollision ? hashTable[gid].y : gid;
     if (index == UINT_MAX) { return; }
-
-    float3 position = float3(sortedPositions[gid].xyz);
-    int3 hashPosition = hashCoord(position, cellSize);
+    GetPositionFunc getCollidablePosition = usePackedPositions ? getPackedPosition : getPosition;
     
-    uint4 simdConnectedVertices[MAX_CONNECTED_VERTICES / 4];
-    uint simdConnectedVerticesCount = connectedVerticesCount / 4;
+    const float3 position = handlingSelfCollision ? float3(colliderPositions[gid].xyz) : getCollidablePosition(gid, collidablePositions);
+    const int3 hashPosition = hashCoord(position, cellSize);
 
-    for (uint i = 0; i < simdConnectedVerticesCount; i++) {
-        uint baseIndex = index * connectedVerticesCount + i * 4;
-        
-        simdConnectedVertices[i] = uint4(
-            connectedVertices[baseIndex],
-            connectedVertices[baseIndex + 1],
-            connectedVertices[baseIndex + 2],
-            connectedVertices[baseIndex + 3]
-        );
-    }
-        
-    const float proximity = cellSize * spacingScale;
-    
     SortedCollisionCandidates sortedCollisionCandidates;
     initializeCollisionCandidates(
         collisionCandidates,
-        sortedPositions,
+        colliderPositions,
         sortedCollisionCandidates,
         index,
-        position,
-        maxCollisionCandidatesCount
+        half3(position),
+        collisionCandidatesCount
       );
     
+    const float squaredDiameter = pow(radius * 2, 2);
     for (int x = hashPosition.x - 1; x <= hashPosition.x + 1; x++) {
         for (int y = hashPosition.y - 1; y <= hashPosition.y + 1; y++) {
             for (int z = hashPosition.z - 1; z <= hashPosition.z + 1; z++) {
-                uint hash = getHash(int3(x, y, z), hashTableCapacity);
-                uint start = cellStart[hash];
+                const float3 cellCenter = float3(x, y, z) * cellSize + cellSize * 0.5;
+                if (sdsBox(cellCenter - float3(position), float3(cellSize * 0.5)) > squaredDiameter) {
+                    continue;
+                }
+
+                const uint hash = getHash(int3(x, y, z), hashTableCapacity);
+                const uint start = cellStart[hash];
                 if (start == UINT_MAX) { continue; }
-                uint end = min(cellEnd[hash], start + maxCollisionCandidatesCount);
+                const uint end = min(cellEnd[hash], start + MAX_COLLISION_CANDIDATES);
                 
                 for (uint i = start; i < end; i++) {
                     uint collisionCandidate = hashTable[i].y;
                     if (collisionCandidate == UINT_MAX) { break; }
-                    if (collisionCandidate == index) { continue; }
+                    if (handlingSelfCollision && collisionCandidate == index) { continue; }
 
                     bool isConnected = false;
-                    for (uint j = 0; j < simdConnectedVerticesCount; j++) {
-                        isConnected = any(simdConnectedVertices[j] == collisionCandidate);
+                    for (uint j = 0; j < connectedVerticesCount; j++) {
+                        isConnected = connectedVertices[index * connectedVerticesCount + j] == collisionCandidate;
                         if (isConnected) { break; }
                     }
                     if (isConnected) { continue; }
-
-                    float3 candidatePosition = float3(sortedPositions[i].xyz);
-                    float3 diff = position - candidatePosition;
-                    float distanceSq = length_squared(diff);
-                    float errorSq = distanceSq - pow(proximity, 2.0);
-                    if (errorSq >= 0.0) { continue; }
-
-                    insertSeed(sortedCollisionCandidates, collisionCandidate, distanceSq, maxCollisionCandidatesCount);
+                    
+                    const half3 candidatePosition = colliderPositions[i].xyz;
+                    float distanceSq = length_squared(position - float3(candidatePosition));
+                    if (distanceSq > sortedCollisionCandidates.candidates[collisionCandidatesCount - 1].distance) { continue; }
+                    if (distanceSq > squaredDiameter) { continue; }
+                    
+                    insertSeed(sortedCollisionCandidates, collisionCandidate, distanceSq, collisionCandidatesCount);
                 }
             }
         }
     }
-    
-    for (int i = 0; i < int(maxCollisionCandidatesCount); i++) {
-        collisionCandidates[index * maxCollisionCandidatesCount + i] = sortedCollisionCandidates.candidates[i].index;
+
+    for (int i = 0; i < int(collisionCandidatesCount); i++) {
+        collisionCandidates[index * collisionCandidatesCount + i] = sortedCollisionCandidates.candidates[i].index;
     }
 }

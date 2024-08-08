@@ -11,7 +11,6 @@ let package = Package(
         .macCatalyst(.v14)
     ],
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "SimulationTools",
             targets: ["SimulationTools"]
@@ -25,9 +24,14 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "SimulationToolsSharedTypes",
+            publicHeadersPath: "."
+        ),
+        .target(
             name: "SimulationTools",
             dependencies: [
-                .product(name: "MetalTools", package: "metal-tools")
+                .product(name: "MetalTools", package: "metal-tools"),
+                .target(name: "SimulationToolsSharedTypes")
             ],
             resources: [
                 .process("CollisionDetection/BroadPhase/BitonicSort/BitonicSort.metal"),
