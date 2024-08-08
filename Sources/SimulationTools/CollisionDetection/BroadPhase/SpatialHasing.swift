@@ -40,17 +40,17 @@ public final class SpatialHashing {
     /// - Parameters:
     ///   - device: The Metal device to use for computations.
     ///   - configuration: The configuration for spatial hashing.
-    ///   - maxElementsCount: The maximum number of elements that can be handled.
+    ///   - maxPositionsCount: The maximum number of positions that can be handled.
     /// - Throws: An error if initialization fails.
     public convenience init(
         heap: MTLHeap,
         configuration: Configuration,
-        maxElementsCount: Int
+        maxPositionsCount: Int
     ) throws {
         try self.init(
             bufferAllocator: .init(type: .heap(heap)),
             configuration: configuration,
-            maxElementsCount: maxElementsCount
+            maxPositionsCount: maxPositionsCount
         )
     }
     
@@ -59,24 +59,24 @@ public final class SpatialHashing {
     /// - Parameters:
     ///   - heap: The Metal heap to allocate resources from.
     ///   - configuration: The configuration for spatial hashing.
-    ///   - maxElementsCount: The maximum number of elements that can be handled.
+    ///   - maxPositionsCount: The maximum number of positions that can be handled.
     /// - Throws: An error if initialization fails.
     public convenience init(
         device: MTLDevice,
         configuration: Configuration,
-        maxElementsCount: Int
+        maxPositionsCount: Int
     ) throws {
         try self.init(
             bufferAllocator: .init(type: .device(device)),
             configuration: configuration,
-            maxElementsCount: maxElementsCount
+            maxPositionsCount: maxPositionsCount
         )
     }
 
     private init(
         bufferAllocator: MTLBufferAllocator,
         configuration: Configuration,
-        maxElementsCount: Int
+        maxPositionsCount: Int
     ) throws {
         let library = try bufferAllocator.device.makeDefaultLibrary(bundle: .module)
         let deviceSupportsNonuniformThreadgroups = bufferAllocator.device.supports(feature: .nonUniformThreadgroups)
@@ -92,24 +92,24 @@ public final class SpatialHashing {
         self.findCollisionCandidatesState = try library.computePipelineState(function: "findCollisionCandidates", constants: constantValues)
         self.bitonicSort = try .init(library: library)
         
-        self.hashTableCapacity = maxElementsCount * 2
-        self.hashTable = try BitonicSort.buffer(count: maxElementsCount, bufferAllocator: bufferAllocator)
+        self.hashTableCapacity = maxPositionsCount * 2
+        self.hashTable = try BitonicSort.buffer(count: maxPositionsCount, bufferAllocator: bufferAllocator)
         self.cellStart = try bufferAllocator.buffer(for: UInt32.self, count: self.hashTableCapacity)
         self.cellEnd = try bufferAllocator.buffer(for: UInt32.self, count: self.hashTableCapacity)
-        self.halfPositions = try bufferAllocator.buffer(for: SIMD3<Float16>.self, count: maxElementsCount)
-        self.sortedHalfPositions = try bufferAllocator.typedBuffer(descriptor: .init(valueType: .half3, count: maxElementsCount))
+        self.halfPositions = try bufferAllocator.buffer(for: SIMD3<Float16>.self, count: maxPositionsCount)
+        self.sortedHalfPositions = try bufferAllocator.typedBuffer(descriptor: .init(valueType: .half3, count: maxPositionsCount))
     }
     
-    /// Builds the spatial hash structure for the given elements.
+    /// Builds the spatial hash structure for the given positions.
     ///
     /// - Parameters:
-    ///   - elements: A buffer containing the positions of elements.
+    ///   - positions: A buffer containing the positions.
     ///   - commandBuffer: The command buffer to encode the operation into.
     public func build(
-        elements: MTLTypedBuffer,
+        positions: MTLTypedBuffer,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let positionsPacked = elements.descriptor.valueType.isPacked
+        let positionsPacked = positions.descriptor.valueType.isPacked
         
         commandBuffer.blit { encoder in
             encoder.fill(buffer: self.hashTable.buffer, range: 0..<self.hashTable.buffer.length, value: .max)
@@ -117,18 +117,18 @@ public final class SpatialHashing {
     
         commandBuffer.pushDebugGroup("Compute Hash")
         commandBuffer.compute { encoder in
-            encoder.setBuffer(elements.buffer, offset: 0, index: 0)
+            encoder.setBuffer(positions.buffer, offset: 0, index: 0)
             encoder.setBuffer(self.halfPositions, offset: 0, index: 1)
-            encoder.setValue(UInt32(elements.descriptor.count), at: 2)
+            encoder.setValue(UInt32(positions.descriptor.count), at: 2)
             encoder.setValue(positionsPacked, at: 3)
-            encoder.dispatch1d(state: self.convertToHalfState, exactlyOrCovering: elements.descriptor.count)
+            encoder.dispatch1d(state: self.convertToHalfState, exactlyOrCovering: positions.descriptor.count)
             
             encoder.setBuffer(self.halfPositions, offset: 0, index: 0)
             encoder.setBuffer(self.hashTable.buffer, offset: 0, index: 1)
             encoder.setValue(UInt32(self.hashTableCapacity), at: 2)
             encoder.setValue(self.configuration.cellSize, at: 3)
-            encoder.setValue(UInt32(elements.descriptor.count), at: 4)
-            encoder.dispatch1d(state: self.computeHashAndIndexState, exactlyOrCovering: elements.descriptor.count)
+            encoder.setValue(UInt32(positions.descriptor.count), at: 4)
+            encoder.dispatch1d(state: self.computeHashAndIndexState, exactlyOrCovering: positions.descriptor.count)
         }
         commandBuffer.popDebugGroup()
 
@@ -142,36 +142,37 @@ public final class SpatialHashing {
             encoder.setBuffer(self.halfPositions, offset: 0, index: 0)
             encoder.setBuffer(self.sortedHalfPositions.buffer, offset: 0, index: 1)
             encoder.setBuffer(self.hashTable.buffer, offset: 0, index: 2)
-            encoder.setValue(UInt32(elements.descriptor.count), at: 3)
-            encoder.dispatch1d(state: self.reorderHalfPrecisionState, exactlyOrCovering: elements.descriptor.count)
+            encoder.setValue(UInt32(positions.descriptor.count), at: 3)
+            encoder.dispatch1d(state: self.reorderHalfPrecisionState, exactlyOrCovering: positions.descriptor.count)
 
             let threadgroupWidth = 256
             encoder.setBuffer(self.cellStart, offset: 0, index: 0)
             encoder.setBuffer(self.cellEnd, offset: 0, index: 1)
             encoder.setBuffer(self.hashTable.buffer, offset: 0, index: 2)
-            encoder.setValue(UInt32(elements.descriptor.count), at: 3)
+            encoder.setValue(UInt32(positions.descriptor.count), at: 3)
             encoder.setThreadgroupMemoryLength((threadgroupWidth + 16) * MemoryLayout<UInt32>.size, index: 0)
-            encoder.dispatch1d(state: self.computeCellBoundariesState, exactlyOrCovering: elements.descriptor.count, threadgroupWidth: threadgroupWidth)
+            encoder.dispatch1d(state: self.computeCellBoundariesState, exactlyOrCovering: positions.descriptor.count, threadgroupWidth: threadgroupWidth)
         }
         commandBuffer.popDebugGroup()
     }
     
-    /// Finds collision candidates for the given elements.
+    /// Finds collision candidates for the given positions.
     ///
     /// - Parameters:
-    ///   - externalElements: Optional buffer containing external elements to check for collisions. If nil, uses the elements from the build step.
+    ///   - collidablePositions: Optional buffer containing collidable positions. If nil, uses the positions from the build step.
     ///   - collisionCandidates: Buffer to store the found collision candidates.
     ///   - connectedVertices: Optional buffer containing connected vertices to exclude from collision checks.
     ///   - commandBuffer: The command buffer to encode the operation into.
     public func find(
-        externalElements: MTLTypedBuffer?,
+        collidablePositions: MTLTypedBuffer?,
         collisionCandidates: MTLTypedBuffer,
         connectedVertices: MTLTypedBuffer?,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let elements = externalElements ?? self.sortedHalfPositions
-        let maxCandidatesCount = collisionCandidates.descriptor.count / elements.descriptor.count
-        let positionsPacked = elements.descriptor.valueType.isPacked
+        let collidablePositionsCount = collidablePositions?.descriptor.count ?? 0
+        let collidablePositions = collidablePositions ?? self.sortedHalfPositions
+        let maxCandidatesCount = collisionCandidates.descriptor.count / collidablePositions.descriptor.count
+        let positionsPacked = collidablePositions.descriptor.valueType.isPacked
 
         commandBuffer.pushDebugGroup("Find Collision Candidates")
         commandBuffer.compute { encoder in
@@ -180,7 +181,7 @@ public final class SpatialHashing {
             encoder.setBuffer(self.cellStart, offset: 0, index: 2)
             encoder.setBuffer(self.cellEnd, offset: 0, index: 3)
             encoder.setBuffer(self.sortedHalfPositions.buffer, offset: 0, index: 4)
-            encoder.setBuffer(elements.buffer, offset: 0, index: 5)
+            encoder.setBuffer(collidablePositions.buffer, offset: 0, index: 5)
             if let connectedVertices {
                 encoder.setBuffer(connectedVertices.buffer, offset: 0, index: 6)
             } else {
@@ -190,22 +191,22 @@ public final class SpatialHashing {
             encoder.setValue(self.configuration.radius, at: 8)
             encoder.setValue(self.configuration.cellSize, at: 9)
             encoder.setValue(UInt32(maxCandidatesCount), at: 10)
-            encoder.setValue(UInt32((connectedVertices?.descriptor.count ?? 0) / elements.descriptor.count), at: 11)
-            encoder.setValue(UInt32(externalElements?.descriptor.count ?? 0), at: 12)
-            encoder.setValue(UInt32(elements.descriptor.count), at: 13)
+            encoder.setValue(UInt32((connectedVertices?.descriptor.count ?? 0) / collidablePositions.descriptor.count), at: 11)
+            encoder.setValue(UInt32(collidablePositionsCount), at: 12)
+            encoder.setValue(UInt32(collidablePositions.descriptor.count), at: 13)
             encoder.setValue(positionsPacked, at: 14)
-            encoder.dispatch1d(state: self.findCollisionCandidatesState, exactlyOrCovering: elements.descriptor.count)
+            encoder.dispatch1d(state: self.findCollisionCandidatesState, exactlyOrCovering: collidablePositions.descriptor.count)
         }
         commandBuffer.popDebugGroup()
     }
 }
 
 public extension SpatialHashing {
-    static func totalBuffersSize(maxElementsCount: Int) -> Int {
-        let cellStartSize = maxElementsCount * MemoryLayout<UInt32>.stride * 2
-        let cellEndSize = maxElementsCount * MemoryLayout<UInt32>.stride * 2
-        let hashTableSize = maxElementsCount * MemoryLayout<SIMD2<UInt32>>.stride * 2
-        let halfPositionsSize = maxElementsCount * MemoryLayout<SIMD3<Float16>>.stride * 2
+    static func totalBuffersSize(maxPositionsCount: Int) -> Int {
+        let cellStartSize = maxPositionsCount * MemoryLayout<UInt32>.stride * 2
+        let cellEndSize = maxPositionsCount * MemoryLayout<UInt32>.stride * 2
+        let hashTableSize = maxPositionsCount * MemoryLayout<SIMD2<UInt32>>.stride * 2
+        let halfPositionsSize = maxPositionsCount * MemoryLayout<SIMD3<Float16>>.stride * 2
         
         return cellStartSize + cellEndSize + hashTableSize + halfPositionsSize
     }

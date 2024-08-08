@@ -47,17 +47,17 @@ Optimized for triangle meshes, this variant enables efficient point-triangle col
 
 ### Spatial Hashing
 
-Here are two examples demonstrating the use of SpatialHashing for both self-collision and external collision scenarios:
-
-#### Self-Collision Example
+Here are a few examples demonstrating the use of SpatialHashing for both self-collision and external collision scenarios:
 
 ```swift
 import Metal
 import SimulationTools
 
+// MARK: - Basic Spatial Hashing Example
+
 // Initialize Metal device and command queue
-let device = MTLCreateSystemDefaultDevice()!
-let commandQueue = device.makeCommandQueue()!
+guard let device = MTLCreateSystemDefaultDevice() else { return }
+guard let commandQueue = device.makeCommandQueue() else { return }
 
 // Create a set of test positions
 let positions: [SIMD3<Float>] = [
@@ -72,25 +72,25 @@ let positions: [SIMD3<Float>] = [
 let config = SpatialHashing.Configuration(cellSize: 1.0, radius: 0.5)
 
 // Create SpatialHashing instance
-let spatialHashing = try! SpatialHashing(
+let spatialHashing = try SpatialHashing(
     device: device,
     configuration: config,
-    maxElementsCount: positions.count
+    maxPositionsCount: positions.count
 )
 
 // Create buffers
-let positionsBuffer = try! device.makeBuffer(bytes: positions, length: MemoryLayout<SIMD3<Float>>.stride * positions.count, options: [])
-let typedPositionsBuffer = try! device.typedBuffer(with: positions, valueType: .float3)
-let collisionCandidatesBuffer = try! device.typedBuffer(
+let positionsBuffer = try device.buffer(with: positions)
+let typedPositionsBuffer = try device.typedBuffer(with: positions, valueType: .float3)
+let collisionCandidatesBuffer = try device.typedBuffer(
     with: Array(repeating: UInt32.max, count: positions.count * 8),
     valueType: .uint
 )
 
 // Create and execute command buffer
-let commandBuffer = commandQueue.makeCommandBuffer()!
-spatialHashing.build(elements: typedPositionsBuffer, in: commandBuffer)
+guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+spatialHashing.build(positions: typedPositionsBuffer, in: commandBuffer)
 spatialHashing.find(
-    externalElements: nil,
+    collidablePositions: nil,
     collisionCandidates: collisionCandidatesBuffer,
     connectedVertices: nil,
     in: commandBuffer
@@ -99,21 +99,12 @@ commandBuffer.commit()
 commandBuffer.waitUntilCompleted()
 
 // Process results
-let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: 8)
+guard let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()?.chunked(into: 8) else { return }
 for (index, candidates) in collisionCandidates.enumerated() {
     print("Collision candidates for position \(index): \(candidates.filter { $0 != .max })")
 }
-```
 
-#### External Collision Example
-
-```swift
-import Metal
-import SimulationTools
-
-// Initialize Metal device and command queue
-let device = MTLCreateSystemDefaultDevice()!
-let commandQueue = device.makeCommandQueue()!
+// MARK: - External Collision Example
 
 // Create a set of mesh positions and external query positions
 let meshPositions: [SIMD3<Float>] = [
@@ -128,56 +119,45 @@ let queryPositions: [SIMD3<Float>] = [
 ]
 
 // Configure spatial hashing
-let config = SpatialHashing.Configuration(cellSize: 1.0, radius: 0.5)
+let externalConfig = SpatialHashing.Configuration(cellSize: 1.0, radius: 0.5)
 
 // Create SpatialHashing instance
-let spatialHashing = try! SpatialHashing(
+let externalSpatialHashing = try SpatialHashing(
     device: device,
-    configuration: config,
-    maxElementsCount: max(meshPositions.count, queryPositions.count)
+    configuration: externalConfig,
+    maxPositionsCount: max(meshPositions.count, queryPositions.count)
 )
 
 // Create buffers
-let meshPositionsBuffer = try! device.typedBuffer(with: meshPositions, valueType: .float3)
-let queryPositionsBuffer = try! device.typedBuffer(with: queryPositions, valueType: .float3)
-let collisionCandidatesBuffer = try! device.typedBuffer(
+let meshPositionsBuffer = try device.typedBuffer(with: meshPositions, valueType: .float3)
+let queryPositionsBuffer = try device.typedBuffer(with: queryPositions, valueType: .float3)
+let externalCollisionCandidatesBuffer = try device.typedBuffer(
     with: Array(repeating: UInt32.max, count: queryPositions.count * 8),
     valueType: .uint
 )
 
 // Create and execute command buffer
-let commandBuffer = commandQueue.makeCommandBuffer()!
-spatialHashing.build(elements: meshPositionsBuffer, in: commandBuffer)
-spatialHashing.find(
-    externalElements: queryPositionsBuffer,
-    collisionCandidates: collisionCandidatesBuffer,
+guard let externalCommandBuffer = commandQueue.makeCommandBuffer() else { return }
+externalSpatialHashing.build(positions: meshPositionsBuffer, in: externalCommandBuffer)
+externalSpatialHashing.find(
+    collidablePositions: queryPositionsBuffer,
+    collisionCandidates: externalCollisionCandidatesBuffer,
     connectedVertices: nil,
-    in: commandBuffer
+    in: externalCommandBuffer
 )
-commandBuffer.commit()
-commandBuffer.waitUntilCompleted()
+externalCommandBuffer.commit()
+externalCommandBuffer.waitUntilCompleted()
 
 // Process results
-let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: 8)
-for (index, candidates) in collisionCandidates.enumerated() {
+guard let externalCollisionCandidates: [[UInt32]] = externalCollisionCandidatesBuffer.values()?.chunked(into: 8) else { return }
+for (index, candidates) in externalCollisionCandidates.enumerated() {
     print("Collision candidates for query position \(index): \(candidates.filter { $0 != .max })")
 }
-```
 
-### Triangle Spatial Hashing
-
-Here's an example demonstrating the use of TriangleSpatialHashing for collision detection with a triangle mesh:
-
-```swift
-import Metal
-import SimulationTools
-
-// Initialize Metal device and command queue
-let device = MTLCreateSystemDefaultDevice()!
-let commandQueue = device.makeCommandQueue()!
+// MARK: - Triangle Spatial Hashing Example
 
 // Create a simple triangle mesh
-let meshPositions: [SIMD3<Float>] = [
+let triangleMeshPositions: [SIMD3<Float>] = [
     [0.0, 0.0, 0.0],
     [1.0, 0.0, 0.0],
     [0.0, 1.0, 0.0],
@@ -189,50 +169,50 @@ let triangles: [SIMD3<UInt32>] = [
 ]
 
 // Create query positions
-let queryPositions: [SIMD3<Float>] = [
+let triangleQueryPositions: [SIMD3<Float>] = [
     [0.5, 0.5, 0.0],
     [1.5, 1.5, 0.0]
 ]
 
 // Configure triangle spatial hashing
-let config = TriangleSpatialHashing.Configuration(cellSize: 1.0, bucketSize: 8)
+let triangleConfig = TriangleSpatialHashing.Configuration(cellSize: 1.0, bucketSize: 8)
 
 // Create TriangleSpatialHashing instance
-let triangleSpatialHashing = try! TriangleSpatialHashing(
+let triangleSpatialHashing = try TriangleSpatialHashing(
     device: device,
-    configuration: config,
-    trianglesCount: triangles.count
+    configuration: triangleConfig,
+    maxTrianglesCount: triangles.count
 )
 
 // Create buffers
-let meshPositionsBuffer = try! device.typedBuffer(with: meshPositions, valueType: .float3)
-let trianglesBuffer = try! device.typedBuffer(with: triangles, valueType: .uint3)
-let queryPositionsBuffer = try! device.typedBuffer(with: queryPositions, valueType: .float3)
-let collisionCandidatesBuffer = try! device.typedBuffer(
-    with: Array(repeating: UInt32.max, count: queryPositions.count * 8),
+let triangleMeshPositionsBuffer = try device.typedBuffer(with: triangleMeshPositions, valueType: .float3)
+let trianglesBuffer = try device.typedBuffer(with: triangles, valueType: .uint3)
+let triangleQueryPositionsBuffer = try device.typedBuffer(with: triangleQueryPositions, valueType: .float3)
+let triangleCollisionCandidatesBuffer = try device.typedBuffer(
+    with: Array(repeating: UInt32.max, count: triangleQueryPositions.count * 8),
     valueType: .uint
 )
 
 // Create and execute command buffer
-let commandBuffer = commandQueue.makeCommandBuffer()!
+guard let triangleCommandBuffer = commandQueue.makeCommandBuffer() else { return }
 triangleSpatialHashing.build(
-    elements: meshPositionsBuffer,
+    colliderPositions: triangleMeshPositionsBuffer,
     indices: trianglesBuffer,
-    in: commandBuffer
+    in: triangleCommandBuffer
 )
 triangleSpatialHashing.find(
-    externalElements: queryPositionsBuffer,
-    elements: meshPositionsBuffer,
+    collidablePositions: triangleQueryPositionsBuffer,
+    colliderPositions: triangleMeshPositionsBuffer,
     indices: trianglesBuffer,
-    collisionCandidates: collisionCandidatesBuffer,
-    in: commandBuffer
+    collisionCandidates: triangleCollisionCandidatesBuffer,
+    in: triangleCommandBuffer
 )
-commandBuffer.commit()
-commandBuffer.waitUntilCompleted()
+triangleCommandBuffer.commit()
+triangleCommandBuffer.waitUntilCompleted()
 
 // Process results
-let collisionCandidates: [[UInt32]] = collisionCandidatesBuffer.values()!.chunked(into: 8)
-for (index, candidates) in collisionCandidates.enumerated() {
-    print("Collision candidates for query position \(index): \(candidates.filter { $0 != .max })")
+guard let triangleCollisionCandidates: [[UInt32]] = triangleCollisionCandidatesBuffer.values()?.chunked(into: 8) else { return }
+for (index, candidates) in triangleCollisionCandidates.enumerated() {
+    print("Collision candidates for triangle query position \(index): \(candidates.filter { $0 != .max })")
 }
 ```

@@ -28,7 +28,7 @@ final class SpatialHashingTests: XCTestCase {
             try SpatialHashing(
                 device: self.device,
                 configuration: config,
-                maxElementsCount: 100
+                maxPositionsCount: 100
             )
         )
     }
@@ -49,7 +49,7 @@ final class SpatialHashingTests: XCTestCase {
         let spatialHashing = try SpatialHashing(
             device: self.device,
             configuration: config,
-            maxElementsCount: positions.count
+            maxPositionsCount: positions.count
         )
         
         let positionsBuffer = try device.typedBuffer(with: positions, valueType: .float3)
@@ -63,10 +63,10 @@ final class SpatialHashingTests: XCTestCase {
             throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
         }
         
-        spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
+        spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
         
         spatialHashing.find(
-            externalElements: nil,
+            collidablePositions: nil,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: nil,
             in: commandBuffer
@@ -146,7 +146,7 @@ final class SpatialHashingTests: XCTestCase {
         let spatialHashing = try SpatialHashing(
             device: self.device,
             configuration: config,
-            maxElementsCount: positions.count
+            maxPositionsCount: positions.count
         )
         
         let positionsBuffer = try device.typedBuffer(with: positions, valueType: .float3)
@@ -169,10 +169,10 @@ final class SpatialHashingTests: XCTestCase {
             throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
         }
         
-        spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
+        spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
         
         spatialHashing.find(
-            externalElements: nil,
+            collidablePositions: nil,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: connectedVerticesBuffer,
             in: commandBuffer
@@ -218,11 +218,11 @@ final class SpatialHashingTests: XCTestCase {
         )
         
         do {
-            let heap = try self.device.heap(size: SpatialHashing.totalBuffersSize(maxElementsCount: count), storageMode: .shared)
+            let heap = try self.device.heap(size: SpatialHashing.totalBuffersSize(maxPositionsCount: count), storageMode: .shared)
             let spatialHashing = try SpatialHashing(
                 heap: heap,
                 configuration: config,
-                maxElementsCount: positions.count
+                maxPositionsCount: positions.count
             )
             
             let candidatesCount = 8
@@ -238,10 +238,10 @@ final class SpatialHashingTests: XCTestCase {
                     return
                 }
 
-                spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
+                spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
                 
                 spatialHashing.find(
-                    externalElements: nil,
+                    collidablePositions: nil,
                     collisionCandidates: collisionCandidatesBuffer,
                     connectedVertices: nil,
                     in: commandBuffer
@@ -278,7 +278,7 @@ final class SpatialHashingTests: XCTestCase {
             let spatialHashing = try SpatialHashing(
                 device: self.device,
                 configuration: config,
-                maxElementsCount: positions.count
+                maxPositionsCount: positions.count
             )
             
             let positionsBuffer = try device.typedBuffer(with: packedPositions, valueType: .packedFloat3)
@@ -292,10 +292,10 @@ final class SpatialHashingTests: XCTestCase {
                 throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
             }
             
-            spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
+            spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
             
             spatialHashing.find(
-                externalElements: nil,
+                collidablePositions: nil,
                 collisionCandidates: collisionCandidatesBuffer,
                 connectedVertices: nil,
                 in: commandBuffer
@@ -334,7 +334,7 @@ final class SpatialHashingTests: XCTestCase {
             let spatialHashing = try SpatialHashing(
                 device: self.device,
                 configuration: config,
-                maxElementsCount: colliderPositions.count
+                maxPositionsCount: colliderPositions.count
             )
             
             let colliderBuffer = try device.typedBuffer(with: colliderPositions, valueType: .float3)
@@ -349,10 +349,10 @@ final class SpatialHashingTests: XCTestCase {
                 throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
             }
             
-            spatialHashing.build(elements: colliderBuffer, in: commandBuffer)
+            spatialHashing.build(positions: colliderBuffer, in: commandBuffer)
             
             spatialHashing.find(
-                externalElements: externalBuffer,
+                collidablePositions: externalBuffer,
                 collisionCandidates: collisionCandidatesBuffer,
                 connectedVertices: nil,
                 in: commandBuffer
@@ -391,7 +391,7 @@ final class SpatialHashingTests: XCTestCase {
         let spatialHashing = try SpatialHashing(
             device: self.device,
             configuration: config,
-            maxElementsCount: colliderPositions.count
+            maxPositionsCount: colliderPositions.count
         )
         
         let packedColliderPositions = colliderPositions.map { packed_float3($0) }
@@ -407,10 +407,10 @@ final class SpatialHashingTests: XCTestCase {
             throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
         }
         
-        spatialHashing.build(elements: colliderBuffer, in: commandBuffer)
+        spatialHashing.build(positions: colliderBuffer, in: commandBuffer)
         
         spatialHashing.find(
-            externalElements: externalBuffer,
+            collidablePositions: externalBuffer,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: nil,
             in: commandBuffer
@@ -445,7 +445,7 @@ final class SpatialHashingTests: XCTestCase {
         let spatialHashing = try SpatialHashing(
             device: self.device,
             configuration: config,
-            maxElementsCount: positions.count
+            maxPositionsCount: positions.count
         )
         
         let positionsBuffer = try device.typedBuffer(with: positions, valueType: .float3)
@@ -459,10 +459,10 @@ final class SpatialHashingTests: XCTestCase {
             throw NSError(domain: "SpatialHashingTests", code: 1, userInfo: nil)
         }
         
-        spatialHashing.build(elements: positionsBuffer, in: commandBuffer)
+        spatialHashing.build(positions: positionsBuffer, in: commandBuffer)
         
         spatialHashing.find(
-            externalElements: nil,
+            collidablePositions: nil,
             collisionCandidates: collisionCandidatesBuffer,
             connectedVertices: nil,
             in: commandBuffer
